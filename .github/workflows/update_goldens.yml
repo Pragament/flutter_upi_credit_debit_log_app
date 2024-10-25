@@ -1,0 +1,48 @@
+name: Update Goldens
+on: workflow_dispatch
+jobs:
+  update_goldens:
+    name: Update Golden Files
+    runs-on: macos-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v3
+
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: 'stable'
+          cache: true
+          cache-key: "flutterCacheV1-:os:-:channel:-:version:-:arch:-:hash:"
+          pub-cache-key: "flutterPubCacheV1-:os:-:channel:-:version:-:arch:-:hash:"
+
+      - name: Setup .env.dev
+        env:
+          ENV_FILE: ${{ secrets.ENV_DEV }}
+        run: echo -n $ENV_FILE | base64 --decode > .env.dev
+
+      - name: Activate derry
+        run: flutter pub global activate derry
+
+      - name: Get Dependencies
+        run: flutter pub get
+
+      - name: Run build_runner
+        run: derry build_runner
+
+      - name: Generate Goldens
+        run: derry test update-goldens
+
+      - name: Configure Git
+        run: |
+          git config user.name "Github Actions Bot"
+          git config user.email "<>"
+
+      - name: Commit changes
+        run: git add test/presentation/goldens && git commit -m "Updated golden files"
+
+      - uses: nelonoel/branch-name@v1.0.1
+
+      - name: Push changes
+        run: git push origin ${BRANCH_NAME}
+

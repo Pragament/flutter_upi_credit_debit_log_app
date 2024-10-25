@@ -1,0 +1,118 @@
+plugins {
+    id "com.android.application"
+    id "kotlin-android"
+    id "dev.flutter.flutter-gradle-plugin"
+}
+
+def localProperties = new Properties()
+def localPropertiesFile = rootProject.file('local.properties')
+if (localPropertiesFile.exists()) {
+    localPropertiesFile.withReader('UTF-8') { reader ->
+        localProperties.load(reader)
+    }
+}
+
+def flutterVersionCode = localProperties.getProperty('flutter.versionCode')
+if (flutterVersionCode == null) {
+    flutterVersionCode = '1'
+}
+
+def flutterVersionName = localProperties.getProperty('flutter.versionName')
+if (flutterVersionName == null) {
+    flutterVersionName = '1.0'
+}
+
+
+android {
+    namespace "com.wednesday.flutter_template"
+    compileSdkVersion project.properties['flutter.compileSdkVersion'].toInteger()
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_1_8
+        targetCompatibility JavaVersion.VERSION_1_8
+    }
+
+    kotlinOptions {
+        jvmTarget = '1.8'
+    }
+
+    sourceSets {
+        main.java.srcDirs += 'src/main/kotlin'
+    }
+
+    defaultConfig {
+        // TODO: Specify your own unique Application ID (https://developer.android.com/studio/build/application-id.html).
+        applicationId "com.wednesday.flutter_template"
+        minSdkVersion project.properties['flutter.minSdkVersion'].toInteger()
+        targetSdkVersion project.properties['flutter.targetSdkVersion'].toInteger()
+        versionCode flutterVersionCode.toInteger()
+        versionName flutterVersionName
+
+        testInstrumentationRunner "pl.leancode.patrol.PatrolJUnitRunner"
+    }
+
+    testOptions {
+        execution "ANDROIDX_TEST_ORCHESTRATOR"
+    }
+
+    flavorDimensions "flavors"
+    productFlavors {
+        dev {
+            dimension "flavors"
+            applicationIdSuffix ".dev"
+            versionNameSuffix "-dev"
+        }
+        qa {
+            dimension "flavors"
+            applicationIdSuffix ".qa"
+            versionNameSuffix "-qa"
+        }
+        prod {
+            dimension "flavors"
+        }
+    }
+
+    signingConfigs {
+        release {
+            storeFile file(System.getenv("KEY_STORE_PATH") ?: "keystore/flutter_template_keystore.jks")
+            storePassword System.getenv("RELEASE_STORE_PASSWORD")
+            keyAlias System.getenv("RELEASE_KEY_ALIAS")
+            keyPassword System.getenv("RELEASE_KEY_PASSWORD")
+        }
+    }
+
+    buildTypes {
+        release {
+            // Only replace with signingConfigs.debug so `flutter run --release` works locally.
+            signingConfig signingConfigs.release
+        }
+    }
+
+    /*
+    Flutter suggested fix:
+    ┌─ Flutter Fix ────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┐
+    │ This issue appears to be https://github.com/flutter/flutter/issues/58247.                                                                │
+    │ Fix this issue by adding the following to the file /Users/shounakmulay/Documents/Work/Flutter/flutter_template/android/app/build.gradle: │
+    │ android {                                                                                                                                │
+    │   lintOptions {                                                                                                                          │
+    │     checkReleaseBuilds false                                                                                                             │
+    │   }                                                                                                                                      │
+    │ }                                                                                                                                        │
+    └──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┘
+     */
+    lintOptions {
+        checkReleaseBuilds false
+    }
+}
+
+flutter {
+    source '../..'
+}
+
+dependencies {
+    implementation "org.jetbrains.kotlin:kotlin-stdlib-jdk7:1.9.23"
+
+    implementation 'androidx.core:core-splashscreen:1.0.0-beta01'
+
+    androidTestUtil "androidx.test:orchestrator:1.4.2"
+}
