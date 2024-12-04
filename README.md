@@ -1,5 +1,14 @@
+## Quick build steps
+```
+dart pub global activate derry
+flutter pub get
+derry generate all
+derry launch dev
+```
+## Current app screenshots
+<img src="https://github.com/user-attachments/assets/0af3db70-c7c5-49ae-9200-afe691a1acad" width="200px" />
 
-
+## More info about this project
 <img align="left" src="flutter_template_github.svg" width="480" height="440" />
 
 <div>
