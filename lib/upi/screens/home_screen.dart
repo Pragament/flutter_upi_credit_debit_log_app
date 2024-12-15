@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_template/upi/screens/product_list_screen.dart';
 import 'package:flutter_template/upi/screens/transaction_screen.dart';
 import 'package:graphql_flutter/graphql_flutter.dart';
@@ -460,7 +461,7 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   void _showEditProductForm(BuildContext context, Product product,
-      Accounts accounts, Function() refreshCallback) {
+      Accounts accounts, ref, Function() refreshCallback) {
     final TextEditingController productNameController =
     TextEditingController(text: product.name);
     final TextEditingController productDescriptionController =
@@ -1586,7 +1587,7 @@ class _HomeScreenState extends State<HomeScreen> {
                 onPressed: () {
                   if (product != null) {
                     _showEditProductForm(
-                        context, product, accounts, refreshCallback);
+                        context, product, accounts, refreshCallback, WidgetRef as Function());
                   }
                 },
               ),

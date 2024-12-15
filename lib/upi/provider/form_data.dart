@@ -8,6 +8,7 @@ class FormData {
   String _currency;
   Color _selectedColor;
   bool _createShortcut;
+  bool _toggleArchived;
 
   FormData({
     String merchantName = '',
@@ -15,11 +16,13 @@ class FormData {
     String currency = 'INR',
     Color selectedColor = Colors.blue,
     bool createShortcut = false,
+    bool toggleArchived = false,
   })  : _merchantName = merchantName,
         _upiId = upiId,
         _currency = currency,
         _selectedColor = selectedColor,
-        _createShortcut = createShortcut;
+        _createShortcut = createShortcut,
+        _toggleArchived = toggleArchived;
 
   // Getter methods for each field
   String get merchantName => _merchantName;
@@ -27,6 +30,7 @@ class FormData {
   String get currency => _currency;
   Color get selectedColor => _selectedColor;
   bool get createShortcut => _createShortcut;
+  bool get toggleArchived => _toggleArchived!;
 
   // Implementing the copyWith method
   FormData copyWith({
@@ -35,6 +39,7 @@ class FormData {
     String? currency,
     Color? selectedColor,
     bool? createShortcut,
+    bool? toggleArchived,
   }) {
     return FormData(
       merchantName: merchantName ?? this.merchantName,
@@ -42,6 +47,7 @@ class FormData {
       currency: currency ?? this.currency,
       selectedColor: selectedColor ?? this.selectedColor,
       createShortcut: createShortcut ?? this.createShortcut,
+      toggleArchived: toggleArchived ?? this.toggleArchived,
     );
   }
 }
@@ -68,6 +74,10 @@ class FormDataNotifier extends StateNotifier<FormData> {
 
   void toggleCreateShortcut() {
     state = state.copyWith(createShortcut: !state.createShortcut);
+  }
+
+  void toggleArchived() {
+    state = state.copyWith(toggleArchived: !state.toggleArchived);
   }
 
   Color getSelectedColor() {

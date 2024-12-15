@@ -11,29 +11,40 @@ final accountsProvider = StateNotifierProvider<AccountsNotifier, List<Accounts>>
 );
 
 class AccountsNotifier extends StateNotifier<List<Accounts>> {
-  AccountsNotifier() : super([]);
+  AccountsNotifier() : super([]) {
+    fetchAccounts(); // Fetch accounts on initialization
+  }
 
-  // Initialize the list by fetching all accounts from Hive
   void fetchAccounts() {
     final accountsList = Hive.box<Accounts>('accounts').values.toList();
     state = accountsList;
   }
 
-  // Add a new account
   Future<void> addAccount(Accounts account) async {
     await Hive.box<Accounts>('accounts').put(account.id, account);
-    fetchAccounts();  // Refresh the list after adding
+    fetchAccounts(); // Refresh the list after adding
   }
 
-  // Update an existing account
   Future<void> updateAccount(Accounts account) async {
     await account.save();
-    fetchAccounts();  // Refresh the list after updating
+    fetchAccounts(); // Refresh the list after updating
   }
 
-  // Delete an account
   Future<void> deleteAccount(Accounts account) async {
     await account.delete();
-    fetchAccounts();  // Refresh the list after deletion
+    fetchAccounts(); // Refresh the list after deletion
   }
+
+  Future<void> addProductIdToAccount(int accountKey, int productId) async {
+    final accountBox = Hive.box<Accounts>('accounts');
+    final account = accountBox.get(accountKey);
+
+    if (account != null) {
+      account.productIds.add(productId);
+      await account.save();
+      fetchAccounts(); // Call fetchAccounts() to notify the state
+    }
+  }
+
 }
+

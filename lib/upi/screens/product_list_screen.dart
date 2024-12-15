@@ -13,7 +13,7 @@ final refreshNotifierProvider = StateProvider<bool>((ref) => false);
 
 class ProductListScreen extends ConsumerWidget {
   final Accounts accounts;
-  final Function(BuildContext, Product, Accounts, Function()) showEditProductForm;
+  final Function(BuildContext, Product, Accounts, WidgetRef, Function()) showEditProductForm;
 
   const ProductListScreen({
     Key? key,
@@ -157,6 +157,7 @@ class ProductListScreen extends ConsumerWidget {
                     context,
                     product,
                     accounts,
+                        ref,
                         () => _refresh(context, ref),
                   );
                 }

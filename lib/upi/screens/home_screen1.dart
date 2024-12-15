@@ -1,11 +1,15 @@
 import 'dart:io';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_colorpicker/flutter_colorpicker.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_template/upi/screens/product_list_screen.dart';
 import 'package:flutter_template/upi/screens/transaction_screen.dart';
 import 'package:flutter_template/upi/screens/widgets/custom_appbar.dart';
+import 'package:graphql_flutter/graphql_flutter.dart';
 import 'package:hive/hive.dart';
+import 'package:image_picker/image_picker.dart';
 import 'package:local_auth/local_auth.dart';
 import 'package:quick_actions/quick_actions.dart';
 
@@ -13,6 +17,7 @@ import '../model/pay.dart';
 import '../provider/account_provider.dart';
 import '../provider/form_data.dart';
 import '../provider/notifiers.dart';
+import '../provider/product_provider.dart';
 import '../provider/riverpod_provider.dart';
 import '../utils/utils.dart';
 import 'create_order_screen.dart';
@@ -29,11 +34,14 @@ class HomeScreen1 extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final searchController = ref.watch(searchControllerProvider);
     final accountsList = ref.watch(accountsProvider);
+    final productsList = ref.watch(productProvider);
 
     return Scaffold(
       appBar: customAppBar(ref, searchController),
       floatingActionButton: _buildFloatingActionButton(ref),
-      body: customBody(ref, accountsList),
+      body: accountsList.isEmpty
+          ? Center(child: Text('No accounts available'))
+          : customBody(ref, accountsList, productsList),
     );
   }
 
@@ -62,7 +70,7 @@ class HomeScreen1 extends ConsumerWidget {
   }
 
 
-  Widget customBody(WidgetRef ref, List<Accounts> accountsList) {
+  Widget customBody(WidgetRef ref, List<Accounts> accountsList, List<Product> productsList) {
     final isAscending = ref.watch(sortOrderProvider);
     final showArchived = ref.watch(showArchivedProvider);
     final searchQuery = ref.watch(searchQueryProviders);
@@ -89,28 +97,22 @@ class HomeScreen1 extends ConsumerWidget {
         final account = filteredAccounts[index];
         final initials = getInitials(account.merchantName);
 
-        // Filtered products
         final filteredProducts = account.productIds.map((productId) {
-          return productBox.get(productId);
-        }).where((product) {
-          if (searchQuery.isEmpty) return true;
-          return product != null &&
-              (product.name.toLowerCase().contains(searchQuery.toLowerCase()) ||
-                  product.description.toLowerCase().contains(searchQuery.toLowerCase()));
-        }).toList();
+          return productsList.firstWhere(
+                (product) => product.id == productId,
+            orElse: () => Product(id: -1, name: 'Unknown', price: 0.0, description: '', imageUrl: ''), // Provide a default Product
+          );
+        }).where((product) => product.id != -1).toList(); // Filter out the default Product
 
-        final shouldDisplayAllProducts = account.merchantName
-            .toLowerCase()
-            .contains(searchQuery.toLowerCase()) ||
+
+        final shouldDisplayAllProducts = account.merchantName.toLowerCase().contains(searchQuery.toLowerCase()) ||
             account.upiId.toLowerCase().contains(searchQuery.toLowerCase());
 
         return itemCard(
           context,
           account,
           initials,
-          shouldDisplayAllProducts
-              ? account.productIds.map((id) => productBox.get(id)).whereType<Product>().toList()
-              : filteredProducts,
+          shouldDisplayAllProducts ? account.productIds.map((id) => productBox.get(id)).whereType<Product>().toList() : filteredProducts,
           ref,
         );
       },
@@ -118,8 +120,8 @@ class HomeScreen1 extends ConsumerWidget {
   }
 
   void refresh() {
-    // setState(() {});
   }
+
   Container itemCard(BuildContext context, Accounts accounts, String initials,
       List<Product?> filteredProducts, WidgetRef ref) {
     return Container(
@@ -197,37 +199,37 @@ class HomeScreen1 extends ConsumerWidget {
               ),
             ),
           ),
-          // Row(
-          //   children: [
-          //     IconButton(
-          //       icon: const Icon(Icons.add),
-          //       onPressed: () => _showAddProductForm(context, accounts),
-          //       padding: const EdgeInsets.all(8.0),
-          //     ),
-          //     IconButton(
-          //       icon: const Icon(Icons.import_export),
-          //       onPressed: () => _importProductForm(
-          //           accounts), // Use a closure to pass the function reference
-          //       padding: const EdgeInsets.all(8.0),
-          //     ),
-          //     IconButton(
-          //       icon: const Icon(Icons.arrow_forward),
-          //       onPressed: () {
-          //         Navigator.of(context).push(
-          //           MaterialPageRoute(
-          //             builder: (context) => ProductListScreen(
-          //               accounts: accounts,
-          //               // productBox: productBox,
-          //               showEditProductForm: _showEditProductForm,
-          //               // refreshHomeScreen: _refresh,
-          //             ),
-          //           ),
-          //         );
-          //       },
-          //       padding: const EdgeInsets.all(8.0),
-          //     ),
-          //   ],
-          // ),
+          Row(
+            children: [
+              IconButton(
+                icon: const Icon(Icons.add),
+                onPressed: () => _showAddProductForm(context, accounts, ref),
+                padding: const EdgeInsets.all(8.0),
+              ),
+              IconButton(
+                icon: const Icon(Icons.import_export),
+                onPressed: () => _importProductForm(
+                    accounts, ref.context), // Use a closure to pass the function reference
+                padding: const EdgeInsets.all(8.0),
+              ),
+              IconButton(
+                icon: const Icon(Icons.arrow_forward),
+                onPressed: () {
+                  Navigator.of(context).push(
+                    MaterialPageRoute(
+                      builder: (context) => ProductListScreen(
+                        accounts: accounts,
+                        // productBox: productBox,
+                        showEditProductForm: _showEditProductForm,
+                        // refreshHomeScreen: _refresh,
+                      ),
+                    ),
+                  );
+                },
+                padding: const EdgeInsets.all(8.0),
+              ),
+            ],
+          ),
           SizedBox(
             height: filteredProducts.isNotEmpty ? 110 : 0,
             child: ListView.builder(
@@ -246,6 +248,424 @@ class HomeScreen1 extends ConsumerWidget {
       ),
     );
   }
+
+  _showEditProductForm(BuildContext context, Product product,
+      Accounts accounts, WidgetRef ref, Function() refreshCallback) {
+    final TextEditingController productNameController =
+    TextEditingController(text: product.name);
+    final TextEditingController productDescriptionController =
+    TextEditingController(text: product.description);
+    final TextEditingController productPriceController =
+    TextEditingController(text: product.price.toString());
+
+    File? pickedImageFile;
+    bool createProdShortcut = product.createShortcut;
+    bool isArchived = product.archived;
+    DateTime? archiveDate = product.archiveDate;
+
+    final bool isDeletable = !isArchived ||
+        (archiveDate != null &&
+            DateTime.now().difference(archiveDate).inDays >= 30);
+
+    Future<void> pickImage(StateSetter setState) async {
+      final pickedFile =
+      await ImagePicker().pickImage(source: ImageSource.gallery);
+      if (pickedFile != null) {
+        // Update the state using the setState from StatefulBuilder
+        setState(() {
+          pickedImageFile = File(pickedFile.path);
+        });
+      }
+    }
+
+    showDialog(
+      context: context,
+      builder: (BuildContext context) {
+        return StatefulBuilder(
+          builder: (BuildContext context, StateSetter setState) {
+            return FutureBuilder<bool>(
+              future: _authenticate(),
+              builder: (context, snapshot) {
+                if (snapshot.connectionState == ConnectionState.waiting) {
+                  return const Center(child: CircularProgressIndicator());
+                } else if (snapshot.hasError || !snapshot.data!) {
+                  return const Center(child: Text('Authentication failed'));
+                } else {
+                  return editproddialog(
+                      productNameController,
+                      productDescriptionController,
+                      productPriceController,
+                      pickImage,
+                      setState,
+                      pickedImageFile,
+                      product,
+                      createProdShortcut,
+                      isArchived,
+                      archiveDate,
+                      refreshCallback,
+                      context,
+                      isDeletable,
+                      accounts,
+                      ref);
+                }
+              },
+            );
+          },
+        );
+      },
+    );
+  }
+
+  AlertDialog editproddialog(
+      TextEditingController productNameController,
+      TextEditingController productDescriptionController,
+      TextEditingController productPriceController,
+      Future<void> pickImage(StateSetter setState),
+      StateSetter setState,
+      File? pickedImageFile,
+      Product product,
+      bool createProdShortcut,
+      bool isArchived,
+      DateTime? archiveDate,
+      refreshCallback(),
+      BuildContext context,
+      bool isDeletable,
+      Accounts accounts,
+      ref) {
+    return AlertDialog(
+      title: const Text('Edit Product'),
+      content: SingleChildScrollView(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            TextField(
+              controller: productNameController,
+              decoration: const InputDecoration(hintText: 'Enter product name'),
+              autofocus: true,
+            ),
+            const SizedBox(height: 8.0),
+            TextField(
+              controller: productDescriptionController,
+              decoration:
+              const InputDecoration(hintText: 'Enter product description'),
+              maxLines: 3,
+            ),
+            const SizedBox(height: 8.0),
+            TextField(
+              controller: productPriceController,
+              decoration:
+              const InputDecoration(hintText: 'Enter product price'),
+              keyboardType: TextInputType.number,
+            ),
+            const SizedBox(height: 8.0),
+            GestureDetector(
+              onTap: () => pickImage(setState),
+              child: pickedImageFile != null
+                  ? Image.file(
+                pickedImageFile!,
+                height: 150,
+                width: 150,
+                fit: BoxFit.cover,
+              )
+                  : product.imageUrl.isNotEmpty
+                  ? Image.file(
+                File(product.imageUrl),
+                height: 150,
+                width: 150,
+                fit: BoxFit.cover,
+              )
+                  : Container(
+                height: 50,
+                width: 50,
+                color: Colors.grey[300],
+                child: const Icon(Icons.add_a_photo,
+                    color: Colors.white),
+              ),
+            ),
+            const SizedBox(height: 16.0),
+            Row(
+              children: [
+                Checkbox(
+                  value: createProdShortcut,
+                  onChanged: (value) {
+                    setState(() {
+                      createProdShortcut = value!;
+                    });
+                  },
+                ),
+                const Text('Create Shortcut'),
+              ],
+            ),
+            const SizedBox(height: 16.0),
+            Row(
+              children: [
+                Checkbox(
+                  value: isArchived,
+                  onChanged: (value) {
+                    setState(() {
+                      isArchived = value!;
+                      archiveDate = value ? DateTime.now() : null;
+                    });
+                  },
+                ),
+                const Text('Archived'),
+              ],
+            ),
+          ],
+        ),
+      ),
+      actions: <Widget>[
+        TextButton(
+          onPressed: () {
+            final productName = productNameController.text.trim();
+            final productDescription = productDescriptionController.text.trim();
+            final productPrice =
+                double.tryParse(productPriceController.text.trim()) ?? 0.0;
+
+            if (productName.isNotEmpty) {
+              // Update the product details
+              final updatedProduct = Product(
+                id: product.id,
+                name: productName,
+                description: productDescription,
+                price: productPrice,
+                imageUrl: pickedImageFile?.path ?? '',
+                archived: isArchived,
+                archiveDate: archiveDate,
+                createShortcut: createProdShortcut,
+              );
+              // Use Riverpod to update the Product
+              ref.read(productProvider.notifier).updateProduct(updatedProduct);
+
+              // Manage the product shortcut creation
+              if (createProdShortcut) {
+                product.createShortcut = true;
+                _createProductQuickAction(product);
+                //_manageProductQuickActions();
+                _manageQuickActions();
+              } else {
+                product.createShortcut = false;
+                // _manageProductQuickActions();
+                _manageQuickActions();
+              }
+              final productBox = Hive.box<Product>('products');
+              productBox.put(updatedProduct.id, updatedProduct);
+
+              refreshCallback(); // Trigger the refresh in the parent widget
+              Navigator.of(context).pop();
+            }
+          },
+          child: const Text('Save'),
+        ),
+        TextButton(
+          onPressed: () {
+            if (!isDeletable) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(
+                  content: Text(
+                      'You cannot delete this account until 30 days have passed since archiving.'),
+                ),
+              );
+            } else {
+              _deleteproducts(product, accounts);
+            }
+            refresh();
+            Navigator.of(context).pop();
+          },
+          child: Text(
+            'Delete',
+            style: TextStyle(
+              color: isDeletable ? Colors.red : Colors.grey,
+            ),
+          ),
+        ),
+        TextButton(
+          onPressed: () {
+            Navigator.of(context).pop();
+          },
+          child: const Text('Cancel'),
+        ),
+      ],
+    );
+  }
+
+  void _createProductQuickAction(Product product) {
+    const QuickActions quickActions = QuickActions();
+    quickActions.setShortcutItems([
+      ShortcutItem(
+        type: 'view_product_${product.id}',
+        localizedTitle: 'View Product ${product.name}',
+      ),
+    ]);
+  }
+  Future<void> _deleteproducts(Product product, Accounts account) async {
+    await product.delete();
+
+    // Update the accounts product list to remove the deleted product ID
+    account.productIds.remove(product.id);
+    await account.save(); // Save the updated account object
+
+    //_manageProductQuickActions(); // Refresh the quick actions
+    _manageQuickActions();
+    // setState(() {});
+  }
+
+
+
+
+  void _showAddProductForm(BuildContext context, Accounts accounts, ref) {
+    final TextEditingController productNameController = TextEditingController();
+    final TextEditingController productDescriptionController =
+    TextEditingController();
+    final TextEditingController productPriceController =
+    TextEditingController();
+
+    File? pickedImageFile;
+
+    Future<void> pickImage(StateSetter setState) async {
+      final pickedFile =
+      await ImagePicker().pickImage(source: ImageSource.gallery);
+      if (pickedFile != null) {
+        // Use setState from StatefulBuilder to update the image
+        setState(() {
+          pickedImageFile = File(pickedFile.path);
+        });
+      }
+    }
+
+    showDialog(
+      context: context,
+      builder: (BuildContext context) {
+        return StatefulBuilder(
+          builder: (BuildContext context, StateSetter setState) {
+            return FutureBuilder<bool>(
+              future: _authenticate(),
+              builder: (context, snapshot) {
+                if (snapshot.connectionState == ConnectionState.waiting) {
+                  return const Center(child: CircularProgressIndicator());
+                } else if (snapshot.hasError || !snapshot.data!) {
+                  return const Center(child: Text('Authentication failed'));
+                } else {
+                  return addprodform(
+                      productNameController,
+                      productDescriptionController,
+                      productPriceController,
+                      pickImage,
+                      setState,
+                      pickedImageFile,
+                      accounts,
+                      context,
+                      ref
+                  );
+                }
+              },
+            );
+          },
+        );
+      },
+    );
+  }
+
+  AlertDialog addprodform(
+      TextEditingController productNameController,
+      TextEditingController productDescriptionController,
+      TextEditingController productPriceController,
+      Future<void> pickImage(StateSetter setState),
+      StateSetter setState,
+      File? pickedImageFile,
+      Accounts accounts,
+      BuildContext context,
+      ref
+      ) {
+    return AlertDialog(
+      title: const Text('Add New Product'),
+      content: SingleChildScrollView(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            TextField(
+              controller: productNameController,
+              decoration: const InputDecoration(hintText: 'Enter product name'),
+              autofocus: true,
+            ),
+            const SizedBox(height: 8.0),
+            TextField(
+              controller: productDescriptionController,
+              decoration:
+              const InputDecoration(hintText: 'Enter product description'),
+              maxLines: 3,
+            ),
+            const SizedBox(height: 8.0),
+            TextField(
+              controller: productPriceController,
+              decoration:
+              const InputDecoration(hintText: 'Enter product price'),
+              keyboardType: TextInputType.number,
+            ),
+            const SizedBox(height: 8.0),
+            GestureDetector(
+              onTap: () => pickImage(setState),
+              child: pickedImageFile != null
+                  ? Image.file(
+                pickedImageFile!,
+                height: 150,
+                width: 150,
+                fit: BoxFit.cover,
+              )
+                  : Container(
+                height: 50,
+                width: 50,
+                color: Colors.grey[300],
+                child: const Icon(Icons.add_a_photo, color: Colors.white),
+              ),
+            ),
+          ],
+        ),
+      ),
+      actions: <Widget>[
+        TextButton(
+          onPressed: () {
+            final productName = productNameController.text.trim();
+            final productDescription = productDescriptionController.text.trim();
+            final productPrice =
+                double.tryParse(productPriceController.text.trim()) ?? 0.0;
+
+            if (productName.isNotEmpty) {
+              // Generate a unique ID by using the next available integer key
+              final productBox = Hive.box<Product>('products');
+              final int newProductId =
+              productBox.isEmpty ? 0 : productBox.keys.cast<int>().last + 1;
+
+              // Create the new product
+              final newProduct = Product(
+                id: newProductId,
+                name: productName,
+                price: productPrice,
+                description: productDescription,
+                imageUrl: pickedImageFile!
+                    .path, // Store the file path if an image is picked
+              );
+
+              // Save the product to the Hive box
+              ref.read(productProvider.notifier).addProduct(newProduct); // Use the provider to add the product
+              accounts.productIds.add(newProductId);
+              Hive.box<Accounts>('accounts').put(accounts.key, accounts);
+              Navigator.of(context).pop();
+            }
+            refresh();
+          },
+          child: const Text('Save'),
+        ),
+        TextButton(
+          onPressed: () {
+            Navigator.of(context).pop();
+          },
+          child: const Text('Cancel'),
+        ),
+      ],
+    );
+  }
+
   GestureDetector productTile(Product? product, Accounts accounts, ref, Function() refreshCallback) {
     return GestureDetector(
       onTap: () {
@@ -354,8 +774,8 @@ class HomeScreen1 extends ConsumerWidget {
                 ),
                 onPressed: () {
                   if (product != null) {
-                    // _showEditProductForm(
-                    //     context, product, accounts, refreshCallback);
+                    _showEditProductForm(
+                        ref.context, product, accounts, ref, refreshCallback);
                   }
                 },
               ),
@@ -435,6 +855,7 @@ class HomeScreen1 extends ConsumerWidget {
 
   Consumer dialog(Accounts? accounts, bool isDeletable, WidgetRef ref) {
     // Declare controllers outside the rebuild logic to make them persistent
+    final archivedNotifier = StateProvider<bool>((ref) => false);
     final merchantNameController = TextEditingController();
     final upiIdController = TextEditingController();
 
@@ -545,11 +966,12 @@ class HomeScreen1 extends ConsumerWidget {
                   Row(
                     children: [
                       Checkbox(
-                        value: accounts.archived,
+                        value: accounts.archived || formData.toggleArchived,
                         onChanged: (value) {
                           if (value != null) {
-                            accounts.archived = value;
-                            accounts.archiveDate = value ? DateTime.now() : null;
+                            ref.read(formDataProvider.notifier).toggleArchived();
+                            // accounts.archived = value;
+                            // accounts.archiveDate = value ? DateTime.now() : null;
                           }
                         },
                       ),
@@ -618,9 +1040,6 @@ class HomeScreen1 extends ConsumerWidget {
     if (formData.createShortcut) {
       _createQuickAction(accounts);
     }
-    // print("Account added succesfully: ");
-    // _manageQuickActions(); // Refresh the quick actions
-    // await ref.read(accountsProvider.notifier);
   }
 
   void _createQuickAction(Accounts accounts) {
@@ -640,6 +1059,7 @@ class HomeScreen1 extends ConsumerWidget {
     account.currency = formData.currency;
     account.color = formData.selectedColor.value;
     account.createShortcut = formData.createShortcut;
+    account.archived = formData.toggleArchived;
 
     if (account.archived == false) {
       account.archiveDate = null;
@@ -684,6 +1104,366 @@ class HomeScreen1 extends ConsumerWidget {
     await ref.read(accountsProvider.notifier).deleteAccount(accounts);
     _manageQuickActions(); // Refresh the quick actions
     // await ref.read(accountsProvider.notifier);
+  }
+
+
+  void _importProductForm(Accounts accounts, context) async {
+    final HttpLink httpLink = HttpLink(
+      'https://dev-api-ecommerce-aggregator-drt457567g.pragament.com/graphql',
+    );
+
+    final GraphQLClient client = GraphQLClient(
+      cache: GraphQLCache(),
+      link: httpLink,
+    );
+
+    const String query = r'''
+  query GetAllData {
+    getAllProducts {
+      id
+      name
+      url
+      price
+      subcategory {
+        id
+        name
+        category {
+          id
+          name
+        }
+      }
+    }
+    getAllCategories {
+      id
+      name
+    }
+    getAllSubcategories {
+      id
+      name
+      category {
+        id
+      }
+    }
+  }
+  ''';
+
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (BuildContext context) {
+        return const AlertDialog(
+          content: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              CircularProgressIndicator(),
+              SizedBox(width: 20),
+              Text("Loading..."),
+            ],
+          ),
+        );
+      },
+    );
+
+    try {
+      final QueryOptions options = QueryOptions(
+        document: gql(query),
+      );
+
+      final QueryResult result = await client.query(options);
+
+      // ignore: use_build_context_synchronously
+      Navigator.of(context).pop(); // Dismiss the loading dialog
+
+      final products = result.data?['getAllProducts'] ?? [];
+      final categories = result.data?['getAllCategories'] ?? [];
+      final subcategories = result.data?['getAllSubcategories'] ?? [];
+
+      String? selectedCategory;
+      String? selectedSubcategory;
+      Set<int> selectedProductIds = {}; // Using Set<int> to store integer IDs
+      Map<String, TextEditingController> priceControllers =
+      {}; // Controllers for price fields
+
+      // Initialize controllers with the current product prices
+      for (var product in products) {
+        final productId = product['id'].toString();
+
+        // Debug log to see raw price data
+        print('Raw price for product ${product['name']}: ${product['price']}');
+
+        priceControllers[productId] = TextEditingController(
+          text: product['price'].toString(),
+        );
+      }
+
+      // ignore: use_build_context_synchronously
+      showDialog(
+        context: context,
+        builder: (BuildContext context) {
+          return AlertDialog(
+            title: const Text('Import Products'),
+            content: StatefulBuilder(
+              builder: (BuildContext context, StateSetter setState) {
+                List filteredProducts = products.where((product) {
+                  final subcategory = product['subcategory'];
+                  final category = subcategory?['category'];
+
+                  if (selectedCategory != null &&
+                      category?['id'] != selectedCategory) {
+                    return false;
+                  }
+                  if (selectedSubcategory != null &&
+                      subcategory?['id'] != selectedSubcategory) {
+                    return false;
+                  }
+                  return true;
+                }).toList();
+
+                return SizedBox(
+                  width: MediaQuery.of(context).size.width * 0.9,
+                  height: MediaQuery.of(context).size.height * 0.6,
+                  child: Column(
+                    children: [
+                      SizedBox(
+                        height: 50.0, // Height for the horizontal list
+                        child: ListView.builder(
+                          scrollDirection: Axis.horizontal,
+                          itemCount: categories.length,
+                          itemBuilder: (context, index) {
+                            final category = categories[index];
+                            return GestureDetector(
+                              onTap: () {
+                                setState(() {
+                                  selectedCategory = category['id'];
+                                  selectedSubcategory = null;
+                                });
+                              },
+                              child: Container(
+                                padding:
+                                const EdgeInsets.symmetric(horizontal: 8.0),
+                                margin:
+                                const EdgeInsets.symmetric(horizontal: 4.0),
+                                decoration: BoxDecoration(
+                                  color: selectedCategory == category['id']
+                                      ? Colors.blue
+                                      : Colors.grey[200],
+                                  borderRadius: BorderRadius.circular(10.0),
+                                ),
+                                child: Center(
+                                  child: Text(
+                                    category['name'],
+                                    style: TextStyle(
+                                      color: selectedCategory == category['id']
+                                          ? Colors.white
+                                          : Colors.black,
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            );
+                          },
+                        ),
+                      ),
+                      Expanded(
+                        child: Row(
+                          children: [
+                            Expanded(
+                              flex: 1, // Adjust the flex to control width
+                              child: SizedBox(
+                                height: double
+                                    .infinity, // Use double.infinity to expand fully
+                                child: ListView.builder(
+                                  itemCount: subcategories.length,
+                                  itemBuilder: (context, index) {
+                                    final subcategory = subcategories[index];
+                                    final category = subcategory['category'];
+
+                                    if (selectedCategory != null &&
+                                        category?['id'] != selectedCategory) {
+                                      return const SizedBox.shrink();
+                                    }
+
+                                    return GestureDetector(
+                                      onTap: () {
+                                        setState(() {
+                                          selectedSubcategory =
+                                          subcategory['id'];
+                                        });
+                                      },
+                                      child: Container(
+                                        padding: const EdgeInsets.symmetric(
+                                            vertical: 8.0, horizontal: 8.0),
+                                        margin: const EdgeInsets.symmetric(
+                                            vertical: 4.0),
+                                        decoration: BoxDecoration(
+                                          color: selectedSubcategory ==
+                                              subcategory['id']
+                                              ? Colors.blue
+                                              : Colors.grey[
+                                          200], // Background for unselected state
+                                          borderRadius:
+                                          BorderRadius.circular(10.0),
+                                        ),
+                                        child: Text(
+                                          subcategory['name'],
+                                          style: TextStyle(
+                                            color: selectedSubcategory ==
+                                                subcategory['id']
+                                                ? Colors.white
+                                                : Colors.black,
+                                          ),
+                                        ),
+                                      ),
+                                    );
+                                  },
+                                ),
+                              ),
+                            ),
+                            Expanded(
+                              flex: 3, // Adjust the flex to control width
+                              child: SingleChildScrollView(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: filteredProducts.map((product) {
+                                    final String productId =
+                                    product['id'].toString();
+                                    final bool isSelected = selectedProductIds
+                                        .contains(productId.hashCode);
+
+                                    return Row(
+                                      children: [
+                                        Checkbox(
+                                          value: isSelected,
+                                          onChanged: (bool? value) {
+                                            setState(() {
+                                              final int uniqueId =
+                                                  productId.hashCode;
+                                              if (value == true) {
+                                                selectedProductIds
+                                                    .add(uniqueId);
+                                              } else {
+                                                selectedProductIds
+                                                    .remove(uniqueId);
+                                              }
+                                            });
+                                          },
+                                        ),
+                                        Expanded(
+                                          child: Column(
+                                            crossAxisAlignment:
+                                            CrossAxisAlignment.start,
+                                            children: [
+                                              Text(product['name']),
+                                              TextFormField(
+                                                controller:
+                                                priceControllers[productId],
+                                                keyboardType:
+                                                TextInputType.number,
+                                                decoration:
+                                                const InputDecoration(
+                                                  labelText: 'Price',
+                                                ),
+                                                onChanged: (value) {
+                                                  if (value.isNotEmpty) {
+                                                    // If the new value is not numeric, revert to the previous valid value
+                                                    double? parsedValue =
+                                                    double.tryParse(value);
+                                                    if (parsedValue == null) {
+                                                      ScaffoldMessenger.of(
+                                                          context)
+                                                          .showSnackBar(
+                                                        const SnackBar(
+                                                          content: Text(
+                                                              'Please enter a valid numeric price.'),
+                                                        ),
+                                                      );
+                                                      // Revert to the previous value
+                                                      priceControllers[
+                                                      productId]!
+                                                          .text = value;
+                                                    }
+                                                  }
+                                                },
+                                              ),
+                                            ],
+                                          ),
+                                        ),
+                                      ],
+                                    );
+                                  }).toList(),
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                );
+              },
+            ),
+            actions: <Widget>[
+              TextButton(
+                child: const Text('Cancel'),
+                onPressed: () {
+                  Navigator.of(context).pop();
+                },
+              ),
+              TextButton(
+                child: const Text('Import'),
+                onPressed: () async {
+                  Navigator.of(context).pop();
+
+                  final productBox = Hive.box<Product>('products');
+                  for (var productId in selectedProductIds) {
+                    final originalProductData = products.firstWhere((product) =>
+                    product['id'].toString().hashCode == productId);
+
+                    final productKey = originalProductData['id'].toString();
+                    final priceController = priceControllers[productKey];
+                    if (priceController == null) {
+                      print(
+                          "No price controller found for product $productKey");
+                      continue; // Skip this product if no controller is found
+                    }
+
+                    final priceText = priceController.text;
+                    final double? price = double.tryParse(priceText);
+
+                    if (price == null || price <= 0) {
+                      print(
+                          "Invalid price for product ${originalProductData['name']} ($priceText)");
+                      continue; // Skip this product if price is invalid
+                    }
+
+                    final newProduct = Product(
+                      id: productId,
+                      name: originalProductData['name'],
+                      price: price, // Save the parsed price
+                      description: '',
+                      imageUrl: '',
+                    );
+
+                    productBox.put(productId, newProduct);
+                  }
+
+                  accounts.productIds.addAll(selectedProductIds);
+                  Hive.box<Accounts>('accounts').put(accounts.key, accounts);
+                  // setState(() {});
+                },
+              ),
+            ],
+          );
+        },
+      );
+    } catch (e) {
+      // ignore: use_build_context_synchronously
+      Navigator.of(context)
+          .pop(); // Dismiss the loading dialog if there's an error
+      if (kDebugMode) {
+        print("Error: $e");
+      }
+    }
   }
 
 }
