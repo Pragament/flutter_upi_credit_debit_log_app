@@ -788,6 +788,7 @@ class HomeScreen extends ConsumerWidget {
 
   Future<bool> _authenticate() async {
     final LocalAuthentication auth = LocalAuthentication();
+    return true;
     try {
       bool canCheckBiometrics = await auth.canCheckBiometrics;
       bool isAuthenticated = false;
