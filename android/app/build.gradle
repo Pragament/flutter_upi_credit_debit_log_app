@@ -43,8 +43,8 @@ android {
     defaultConfig {
         // TODO: Specify your own unique Application ID (https://developer.android.com/studio/build/application-id.html).
         applicationId "com.wednesday.flutter_template"
-        minSdkVersion project.properties['flutter.minSdkVersion'].toInteger()
-        targetSdkVersion project.properties['flutter.targetSdkVersion'].toInteger()
+        minSdkVersion 21
+        targetSdkVersion flutter.targetSdkVersion
         versionCode flutterVersionCode.toInteger()
         versionName flutterVersionName
 
