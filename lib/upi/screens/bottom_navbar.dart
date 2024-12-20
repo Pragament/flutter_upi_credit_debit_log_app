@@ -1,7 +1,7 @@
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:flutter_template/upi/screens/home_screen1.dart';
+import 'package:flutter_template/upi/screens/home_screen.dart';
 import 'package:hive/hive.dart';
 import 'package:quick_actions/quick_actions.dart';
 
@@ -71,9 +71,6 @@ class KBottom extends ConsumerWidget {
         },
         children: [
           HomeScreen(
-            quickActions: quickActions,
-          ),
-          HomeScreen1(
             quickActions: quickActions,
           ),
           const TransactionScreen(),

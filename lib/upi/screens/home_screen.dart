@@ -1,133 +1,52 @@
-import 'dart:async';
 import 'dart:io';
+
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_colorpicker/flutter_colorpicker.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_template/upi/screens/product_list_screen.dart';
 import 'package:flutter_template/upi/screens/transaction_screen.dart';
+import 'package:flutter_template/upi/screens/widgets/custom_appbar.dart';
 import 'package:graphql_flutter/graphql_flutter.dart';
-import 'package:hive_flutter/hive_flutter.dart';
+import 'package:hive/hive.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:local_auth/local_auth.dart';
 import 'package:quick_actions/quick_actions.dart';
-import 'package:flutter_colorpicker/flutter_colorpicker.dart';
 
 import '../model/pay.dart';
+import '../provider/account_provider.dart';
+import '../provider/form_data.dart';
+import '../provider/notifiers.dart';
+import '../provider/product_provider.dart';
+import '../provider/riverpod_provider.dart';
 import '../utils/utils.dart';
 import 'create_order_screen.dart';
 
-class HomeScreen extends StatefulWidget {
+final accountsBox = Hive.box<Accounts>('accounts');
+final productBox = Hive.box<Product>('products');
+
+class HomeScreen extends ConsumerWidget {
   final QuickActions quickActions;
 
-  const HomeScreen({Key? key, required this.quickActions}) : super(key: key);
+  const HomeScreen({super.key, required this.quickActions});
 
   @override
-  State<HomeScreen> createState() => _HomeScreenState();
-}
+  Widget build(BuildContext context, WidgetRef ref) {
+    final searchController = ref.watch(searchControllerProvider);
+    final accountsList = ref.watch(accountsProvider);
+    final productsList = ref.watch(productProvider);
 
-class _HomeScreenState extends State<HomeScreen> {
-  late Box<Accounts> accountsBox;
-  late Box<Product> productBox;
-  Color _selectedColor = Colors.blue;
-  final TextEditingController _merchantNameController = TextEditingController();
-  final TextEditingController _upiIdController = TextEditingController();
-  final TextEditingController _currencyController = TextEditingController();
-  bool _createShortcut = false;
-  final TextEditingController _searchController = TextEditingController();
-  final ValueNotifier<String> _searchQueryNotifier = ValueNotifier<String>('');
-  bool _isAscending = true;
-  bool _showArchived = false;
-  String _currency = "INR";
-
-  get sha256 => null;
-
-  final LocalAuthentication auth = LocalAuthentication();
-
-  Timer? _inactivityTimer;
-  static const int _inactivityDuration = 10 * 60; // 10 minutes in seconds
-
-
-
-  // Method to start the inactivity timer
-  void _startInactivityTimer() {
-    _inactivityTimer?.cancel(); // Cancel any existing timer
-    _inactivityTimer = Timer(Duration(seconds: _inactivityDuration), () async {
-      bool isAuthenticated = await _authenticate();
-      if (!isAuthenticated) {
-        // Handle failed authentication (e.g., lock the screen or navigate to a login screen)
-        print('Authentication failed after inactivity.');
-      } else {
-        print('User authenticated successfully after inactivity.');
-      }
-    });
-  }
-
-  // Reset the inactivity timer on user activity
-  void _resetInactivityTimer() {
-    _startInactivityTimer();
+    return Scaffold(
+      appBar: customAppBar(ref, searchController),
+      floatingActionButton: _buildFloatingActionButton(ref),
+      body: accountsList.isEmpty
+          ? Center(child: Text('No accounts available'))
+          : customBody(ref, accountsList, productsList),
+    );
   }
 
 
-  Future<bool> _authenticate() async {
-    return true;
-    try {
-      bool canCheckBiometrics = await auth.canCheckBiometrics;
-      bool isAuthenticated = false;
-
-      if (canCheckBiometrics) {
-        isAuthenticated = await auth.authenticate(
-          localizedReason: 'Please authenticate to access the app',
-          options: const AuthenticationOptions(biometricOnly: true),
-        );
-      } else {}
-
-      return isAuthenticated;
-    } catch (e) {
-      return false;
-    }
-  }
-
-  @override
-  void initState() {
-    super.initState();
-    accountsBox = Hive.box<Accounts>('accounts');
-    productBox = Hive.box<Product>('products');
-    _manageQuickActions(); // Initialize quick actions on startup
-    _startInactivityTimer();
-    // _manageProductQuickActions(); // Initialize product quick actions
-  }
-
-  @override
-  void dispose() {
-    _searchController.dispose();
-    _searchQueryNotifier.dispose();
-    _merchantNameController.dispose();
-    _upiIdController.dispose();
-    _currencyController.dispose();
-    super.dispose();
-    _inactivityTimer?.cancel();
-  }
-
-  void _toggleSortOrder() {
-    setState(() {
-      _isAscending = !_isAscending;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            _isAscending
-                ? 'Sorting by account in ascending order'
-                : 'Sorting by account in descending order',
-          ),
-        ),
-      );
-    });
-  }
-
-  void _onSearchChanged(String query) {
-    _searchQueryNotifier.value = query;
-  }
-
-  List<Accounts> _filterAccounts(List<Accounts> accountsList, String query) {
+  List<Accounts> filterAccounts(List<Accounts> accountsList, String query) {
     if (query.isEmpty) return accountsList;
 
     return accountsList.where((account) {
@@ -150,318 +69,188 @@ class _HomeScreenState extends State<HomeScreen> {
     }).toList();
   }
 
-  void _showForm({Accounts? accounts}) {
-    if (accounts != null) {
-      _merchantNameController.text = accounts.merchantName;
-      _upiIdController.text = accounts.upiId;
-      _currency = accounts.currency; // Update to use _currency
-      _selectedColor = Color(accounts.color);
-      _createShortcut = accounts.createShortcut;
-    } else {
-      _merchantNameController.clear();
-      _upiIdController.clear();
-      _currency = ''; // Set default currency
-      _selectedColor = Colors.blue;
-      _createShortcut = false;
-    }
 
-    final bool isArchived = accounts?.archived ?? false;
-    final DateTime? archiveDate = accounts?.archiveDate;
-    final bool isDeletable = !isArchived ||
-        (archiveDate != null &&
-            DateTime.now().difference(archiveDate).inDays >= 30);
+  Widget customBody(WidgetRef ref, List<Accounts> accountsList, List<Product> productsList) {
+    final isAscending = ref.watch(sortOrderProvider);
+    final showArchived = ref.watch(showArchivedProvider);
+    final searchQuery = ref.watch(searchQueryProviders);
 
-    showDialog(
-        context: context,
-        builder: (_) => FutureBuilder<bool>(
-          future: _authenticate(),
-          builder: (context, snapshot) {
-            if (snapshot.connectionState == ConnectionState.waiting) {
-              return const Scaffold(
-                body: Center(child: CircularProgressIndicator()),
-              );
-            } else if (snapshot.hasError || !snapshot.data!) {
-              return const Scaffold(
-                body: Center(child: Text('Authentication failed')),
-              );
-            } else {
-              return dialog(accounts, isDeletable);
-            }
-          },
-        ));
+    // Fetch and filter accounts
+    accountsList.sort((a, b) {
+      int compareResult = a.merchantName
+          .toLowerCase()
+          .compareTo(b.merchantName.toLowerCase());
+      return isAscending ? compareResult : -compareResult;
+    });
+
+    final filteredAccounts = filterAccounts(accountsList, searchQuery).where((account) {
+      if (showArchived) {
+        return account.archived;
+      } else {
+        return !account.archived;
+      }
+    }).toList();
+
+    return ListView.builder(
+      itemCount: filteredAccounts.length,
+      itemBuilder: (context, index) {
+        final account = filteredAccounts[index];
+        final initials = getInitials(account.merchantName);
+
+        final filteredProducts = account.productIds.map((productId) {
+          return productsList.firstWhere(
+                (product) => product.id == productId,
+            orElse: () => Product(id: -1, name: 'Unknown', price: 0.0, description: '', imageUrl: ''), // Provide a default Product
+          );
+        }).where((product) => product.id != -1).toList(); // Filter out the default Product
+
+
+        final shouldDisplayAllProducts = account.merchantName.toLowerCase().contains(searchQuery.toLowerCase()) ||
+            account.upiId.toLowerCase().contains(searchQuery.toLowerCase());
+
+        return itemCard(
+          context,
+          account,
+          initials,
+          shouldDisplayAllProducts ? account.productIds.map((id) => productBox.get(id)).whereType<Product>().toList() : filteredProducts,
+          ref,
+        );
+      },
+    );
   }
 
-  AlertDialog dialog(Accounts? accounts, bool isDeletable) {
-    return AlertDialog(
-      title: Text(accounts == null ? 'Add accounts' : 'Edit accounts'),
-      content: StatefulBuilder(
-        builder: (BuildContext context, StateSetter setState) {
-          // List of currencies
-          final List<String> currencies = ['INR'];
+  void refresh() {
+  }
 
-          // Ensure _currency is in the list of currencies
-          if (_currency.isEmpty || !currencies.contains(_currency)) {
-            _currency =
-                currencies.first; // Default to the first item if not found
-          }
-
-          // Move the _pickColor method inside the builder
-          void pickColor() async {
-            final Color? color = await showDialog(
-              context: context,
-              builder: (context) => AlertDialog(
-                title: const Text('Pick a color'),
-                content: SingleChildScrollView(
-                  child: BlockPicker(
-                    pickerColor: _selectedColor,
-                    onColorChanged: (Color color) {
-                      setState(() => _selectedColor = color); // Update state
-                      Navigator.of(context).pop(color);
-                    },
+  Container itemCard(BuildContext context, Accounts accounts, String initials,
+      List<Product?> filteredProducts, WidgetRef ref) {
+    return Container(
+      margin: const EdgeInsets.symmetric(vertical: 8.0, horizontal: 16.0),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Card(
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(12.0),
+            ),
+            elevation: 2,
+            child: ListTile(
+              onTap: () {
+                Navigator.of(context).push(
+                  MaterialPageRoute(
+                    builder: (context) => CreateOrderScreen(
+                      account: accounts,
+                      onOrderCreated: refresh,
+                    ),
+                  ),
+                );
+              },
+              contentPadding: const EdgeInsets.all(16.0),
+              leading: Container(
+                width: 50,
+                height: 50,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: Color(accounts.color),
+                  border: Border.all(
+                    color: Colors.white,
+                    width: 2,
+                  ),
+                ),
+                child: Center(
+                  child: Text(
+                    initials,
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontWeight: FontWeight.bold,
+                      fontSize: 18,
+                    ),
                   ),
                 ),
               ),
-            );
-
-            if (color != null) {
-              setState(() => _selectedColor = color); // Update state
-            }
-          }
-
-          return SingleChildScrollView(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                TextField(
-                  controller: _merchantNameController,
-                  decoration: const InputDecoration(labelText: 'Merchant Name'),
-                ),
-                const SizedBox(height: 16.0),
-                TextField(
-                  controller: _upiIdController,
-                  decoration: const InputDecoration(labelText: 'UPI ID'),
-                ),
-                const SizedBox(height: 16.0),
-                // Row with DropdownButton and Text
-                Row(
+              title: Text(accounts.merchantName),
+              subtitle: Text(formatUpiId(accounts.upiId)),
+              trailing: SizedBox(
+                width: 96, // Adjust the width as needed
+                child: Row(
+                  mainAxisSize: MainAxisSize
+                      .min, // Ensures the row does not take up more space than necessary
+                  mainAxisAlignment: MainAxisAlignment.spaceAround,
                   children: [
-                    Expanded(
-                      child: Text(
-                        'Currency:',
-                        style: Theme.of(context).textTheme.bodyMedium,
-                      ),
-                    ),
-                    DropdownButton<String>(
-                      value: _currency,
-                      items: currencies.map((String currency) {
-                        return DropdownMenuItem<String>(
-                          value: currency,
-                          child: Text(currency),
+                    IconButton(
+                      icon: const Icon(Icons.history),
+                      onPressed: () {
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (context) => TransactionScreen(
+                              account: accounts,
+                            ),
+                          ),
                         );
-                      }).toList(),
-                      onChanged: (String? newValue) {
-                        setState(() {
-                          _currency = newValue!;
-                        });
                       },
                     ),
-                  ],
-                ),
-                const SizedBox(height: 16.0),
-                Row(
-                  children: [
-                    const Text('Choose Color:'),
-                    const SizedBox(width: 8.0),
-                    GestureDetector(
-                      onTap: pickColor,
-                      child: Container(
-                        width: 30,
-                        height: 30,
-                        color: _selectedColor,
-                      ),
+                    IconButton(
+                      icon: const Icon(Icons.edit),
+                      onPressed: () => _showForm(accounts: accounts, ref: ref),
                     ),
                   ],
                 ),
-                const SizedBox(height: 16.0),
-                Row(
-                  children: [
-                    Checkbox(
-                      value: _createShortcut,
-                      onChanged: (value) {
-                        setState(() {
-                          _createShortcut = value!;
-                        });
-                      },
-                    ),
-                    const Text('Create Shortcut'),
-                  ],
-                ),
-                if (accounts != null) ...[
-                  const SizedBox(height: 16.0),
-                  Row(
-                    children: [
-                      Checkbox(
-                        value: accounts.archived,
-                        onChanged: (value) {
-                          setState(() {
-                            accounts.archived = value!;
-                            accounts.archiveDate =
-                            value ? DateTime.now() : null;
-                          });
-                        },
-                      ),
-                      const Text('Archived'),
-                    ],
-                  ),
-                ],
-              ],
-            ),
-          );
-        },
-      ),
-      actions: [
-        TextButton(
-          onPressed: () => Navigator.of(context).pop(),
-          child: const Text('Cancel'),
-        ),
-        accounts != null
-            ? TextButton(
-          onPressed: () {
-            if (!isDeletable) {
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(
-                  content: Text(
-                      'You cannot delete this account until 30 days have passed since archiving.'),
-                ),
-              );
-            } else {
-              _deleteaccounts(accounts);
-            }
-            Navigator.of(context).pop();
-          },
-          child: Text(
-            'Delete',
-            style: TextStyle(
-              color: isDeletable ? Colors.red : Colors.grey,
+              ),
             ),
           ),
-        )
-            : const SizedBox(
-          height: 0,
-          width: 0,
-        ),
-        TextButton(
-          onPressed: () {
-            if (accounts == null) {
-              _addaccounts();
-            } else {
-              _updateaccounts(accounts);
-            }
-            Navigator.of(context).pop();
-          },
-          child: const Text('Save'),
-        ),
-      ],
-    );
-  }
+          Row(
+            children: [
+              IconButton(
+                icon: const Icon(Icons.add),
+                onPressed: () => _showAddProductForm(context, accounts, ref),
+                padding: const EdgeInsets.all(8.0),
+              ),
+              IconButton(
+                icon: const Icon(Icons.import_export),
+                onPressed: () => _importProductForm(
+                    accounts, ref.context), // Use a closure to pass the function reference
+                padding: const EdgeInsets.all(8.0),
+              ),
+              IconButton(
+                icon: const Icon(Icons.arrow_forward),
+                onPressed: () {
+                  Navigator.of(context).push(
+                    MaterialPageRoute(
+                      builder: (context) => ProductListScreen(
+                        accounts: accounts,
+                        // productBox: productBox,
+                        showEditProductForm: _showEditProductForm,
+                        // refreshHomeScreen: _refresh,
+                      ),
+                    ),
+                  );
+                },
+                padding: const EdgeInsets.all(8.0),
+              ),
+            ],
+          ),
+          SizedBox(
+            height: filteredProducts.isNotEmpty ? 110 : 0,
+            child: ListView.builder(
+              scrollDirection: Axis.horizontal,
+              itemCount: filteredProducts.length,
+              itemBuilder: (context, index) {
+                final product = filteredProducts[index];
 
-  Future<void> _addaccounts() async {
-    final id = accountsBox.isEmpty ? 0 : accountsBox.values.last.id + 1;
-    final accounts = Accounts(
-      id: id,
-      merchantName: _merchantNameController.text,
-      upiId: _upiIdController.text,
-      currency: _currencyController.text,
-      color: _selectedColor.value,
-      createShortcut: _createShortcut,
-      archived: false,
-      productIds: [],
-    );
-
-    await accountsBox.put(id, accounts);
-    if (_createShortcut) {
-      _createQuickAction(accounts);
-    }
-    _manageQuickActions(); // Refresh the quick actions
-    setState(() {});
-  }
-
-  Future<void> _updateaccounts(Accounts accounts) async {
-    accounts.merchantName = _merchantNameController.text;
-    accounts.upiId = _upiIdController.text;
-    accounts.currency = _currencyController.text;
-    accounts.color = _selectedColor.value;
-    accounts.createShortcut = _createShortcut;
-
-    if (accounts.archived == false) {
-      accounts.archiveDate = null;
-    } else if (accounts.archived) {
-      accounts.archiveDate = DateTime.now();
-    }
-
-    await accounts.save();
-    _manageQuickActions(); // Refresh the quick actions
-    setState(() {});
-  }
-
-  Future<void> _deleteaccounts(Accounts accounts) async {
-    await accounts.delete();
-    _manageQuickActions(); // Refresh the quick actions
-    setState(() {});
-  }
-
-  Future<void> _deleteproducts(Product product, Accounts account) async {
-    await product.delete();
-
-    // Update the accounts product list to remove the deleted product ID
-    account.productIds.remove(product.id);
-    await account.save(); // Save the updated account object
-
-    //_manageProductQuickActions(); // Refresh the quick actions
-    _manageQuickActions();
-    setState(() {});
-  }
-
-  void _createQuickAction(Accounts accounts) {
-    widget.quickActions.setShortcutItems(<ShortcutItem>[
-      ShortcutItem(
-        type: 'create_order_${accounts.id}',
-        localizedTitle: 'Create Order for ${accounts.merchantName}',
-        //icon: 'icon_add_order',
+                return productTile(product, accounts, ref, () {
+                  // setState(() {});
+                });
+              },
+            ),
+          ),
+        ],
       ),
-    ]);
+    );
   }
 
-  void _manageQuickActions() {
-    // Fetch quick actions for accounts
-    final accountShortcuts = Hive.box<Accounts>('accounts')
-        .values
-        .where((accounts) => accounts.createShortcut)
-        .map((accounts) {
-      return ShortcutItem(
-        type: 'create_order_${accounts.id}',
-        localizedTitle: 'Create Order for ${accounts.merchantName}',
-      );
-    }).toList();
-
-    // Fetch quick actions for products
-    final productShortcuts =
-    Hive.box<Product>('products').values.map((product) {
-      return ShortcutItem(
-        type: 'view_product_${product.id}',
-        localizedTitle: 'View Product ${product.name}',
-      );
-    }).toList();
-
-    // Combine both lists of shortcuts
-    final combinedShortcuts = [...accountShortcuts, ...productShortcuts];
-
-    // Set all shortcuts at once
-    widget.quickActions.setShortcutItems(combinedShortcuts);
-  }
-
-  void _showEditProductForm(BuildContext context, Product product,
-      Accounts accounts, ref, Function() refreshCallback) {
+  _showEditProductForm(BuildContext context, Product product,
+      Accounts accounts, WidgetRef ref, Function() refreshCallback) {
     final TextEditingController productNameController =
     TextEditingController(text: product.name);
     final TextEditingController productDescriptionController =
@@ -516,7 +305,8 @@ class _HomeScreenState extends State<HomeScreen> {
                       refreshCallback,
                       context,
                       isDeletable,
-                      accounts);
+                      accounts,
+                      ref);
                 }
               },
             );
@@ -540,7 +330,8 @@ class _HomeScreenState extends State<HomeScreen> {
       refreshCallback(),
       BuildContext context,
       bool isDeletable,
-      Accounts accounts) {
+      Accounts accounts,
+      ref) {
     return AlertDialog(
       title: const Text('Edit Product'),
       content: SingleChildScrollView(
@@ -633,17 +424,18 @@ class _HomeScreenState extends State<HomeScreen> {
 
             if (productName.isNotEmpty) {
               // Update the product details
-              product.name = productName;
-              product.description = productDescription;
-              product.price = productPrice;
-              if (pickedImageFile != null) {
-                product.imageUrl = pickedImageFile!.path; // Store the file path
-              }
-              product.archived = isArchived;
-              product.archiveDate = archiveDate;
-
-              // Save the updated product
-              product.save();
+              final updatedProduct = Product(
+                id: product.id,
+                name: productName,
+                description: productDescription,
+                price: productPrice,
+                imageUrl: pickedImageFile?.path ?? '',
+                archived: isArchived,
+                archiveDate: archiveDate,
+                createShortcut: createProdShortcut,
+              );
+              // Use Riverpod to update the Product
+              ref.read(productProvider.notifier).updateProduct(updatedProduct);
 
               // Manage the product shortcut creation
               if (createProdShortcut) {
@@ -656,6 +448,8 @@ class _HomeScreenState extends State<HomeScreen> {
                 // _manageProductQuickActions();
                 _manageQuickActions();
               }
+              final productBox = Hive.box<Product>('products');
+              productBox.put(updatedProduct.id, updatedProduct);
 
               refreshCallback(); // Trigger the refresh in the parent widget
               Navigator.of(context).pop();
@@ -675,7 +469,7 @@ class _HomeScreenState extends State<HomeScreen> {
             } else {
               _deleteproducts(product, accounts);
             }
-            _refresh();
+            refresh();
             Navigator.of(context).pop();
           },
           child: Text(
@@ -705,7 +499,19 @@ class _HomeScreenState extends State<HomeScreen> {
     ]);
   }
 
-  void _showAddProductForm(BuildContext context, Accounts accounts) {
+  Future<void> _deleteproducts(Product product, Accounts account) async {
+    await product.delete();
+
+    // Update the accounts product list to remove the deleted product ID
+    account.productIds.remove(product.id);
+    await account.save(); // Save the updated account object
+
+    //_manageProductQuickActions(); // Refresh the quick actions
+    _manageQuickActions();
+    // setState(() {});
+  }
+
+  void _showAddProductForm(BuildContext context, Accounts accounts, ref) {
     final TextEditingController productNameController = TextEditingController();
     final TextEditingController productDescriptionController =
     TextEditingController();
@@ -746,7 +552,9 @@ class _HomeScreenState extends State<HomeScreen> {
                       setState,
                       pickedImageFile,
                       accounts,
-                      context);
+                      context,
+                      ref
+                  );
                 }
               },
             );
@@ -764,7 +572,9 @@ class _HomeScreenState extends State<HomeScreen> {
       StateSetter setState,
       File? pickedImageFile,
       Accounts accounts,
-      BuildContext context) {
+      BuildContext context,
+      ref
+      ) {
     return AlertDialog(
       title: const Text('Add New Product'),
       content: SingleChildScrollView(
@@ -835,15 +645,12 @@ class _HomeScreenState extends State<HomeScreen> {
               );
 
               // Save the product to the Hive box
-              productBox.put(newProductId, newProduct);
-
-              // Update the accounts with the new product ID
+              ref.read(productProvider.notifier).addProduct(newProduct); // Use the provider to add the product
               accounts.productIds.add(newProductId);
               Hive.box<Accounts>('accounts').put(accounts.key, accounts);
-
               Navigator.of(context).pop();
             }
-            _refresh();
+            refresh();
           },
           child: const Text('Save'),
         ),
@@ -857,7 +664,441 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  void _importProductForm(Accounts accounts) async {
+  GestureDetector productTile(Product? product, Accounts accounts, ref, Function() refreshCallback) {
+    return GestureDetector(
+      onTap: () {
+        if (product != null) {
+          Navigator.of(ref.context).push(
+            MaterialPageRoute(
+              builder: (context) => CreateOrderScreen(
+                account: accounts, products: [product],
+                onOrderCreated: refresh,
+                // Passing the product price as the amount
+              ),
+            ),
+          );
+        }
+      },
+      child: Container(
+        width: 220,
+        height: 120,
+        margin: const EdgeInsets.symmetric(horizontal: 8.0),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(8.0),
+        ),
+        child: Stack(
+          children: [
+            Padding(
+              padding: const EdgeInsets.all(8.0),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          product != null && product.name.isNotEmpty
+                              ? product.name
+                              : 'Unknown Product',
+                          style: const TextStyle(
+                              color: Colors.black,
+                              fontWeight: FontWeight.bold,
+                              fontSize: 16.0,
+                              overflow: TextOverflow.ellipsis),
+                          textAlign: TextAlign.left,
+                        ),
+                        const SizedBox(height: 4.0),
+                        Text(
+                          product != null
+                              ? '₹${product.price.toString()}'
+                              : 'Price not available',
+                          style: const TextStyle(
+                            color: Colors.black,
+                            fontWeight: FontWeight.bold,
+                            fontSize: 14.0,
+                          ),
+                          textAlign: TextAlign.left,
+                        ),
+                        const SizedBox(height: 4.0),
+                        Text(
+                          product != null && product.description.isNotEmpty
+                              ? product.description
+                              : 'No description available',
+                          style: const TextStyle(
+                            color: Colors.black,
+                            fontSize: 14.0,
+                          ),
+                          textAlign: TextAlign.left,
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(width: 8.0),
+                  if (product != null && product.imageUrl.isNotEmpty)
+                    ClipRRect(
+                      borderRadius: BorderRadius.circular(8.0),
+                      child: product.imageUrl.startsWith('http')
+                          ? SizedBox()
+                          : Image.file(
+                        File(product.imageUrl),
+                        height: 100,
+                        width: 100,
+                        fit: BoxFit.cover,
+                      ),
+                    )
+                  else
+                    const Icon(Icons.category, color: Colors.grey, size: 100),
+                ],
+              ),
+            ),
+            Positioned(
+              top: 0,
+              right: 0,
+              child: IconButton(
+                icon: const Icon(
+                  Icons.edit,
+                  color: Colors.black,
+                  size: 30,
+                ),
+                onPressed: () {
+                  if (product != null) {
+                    _showEditProductForm(
+                        ref.context, product, accounts, ref, refreshCallback);
+                  }
+                },
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+
+  FloatingActionButton _buildFloatingActionButton(WidgetRef ref) {
+    return FloatingActionButton(
+      onPressed: () => _showForm(ref: ref),
+      child: const Icon(Icons.add),
+    );
+  }
+
+  Future<bool> _authenticate() async {
+    final LocalAuthentication auth = LocalAuthentication();
+    try {
+      bool canCheckBiometrics = await auth.canCheckBiometrics;
+      bool isAuthenticated = false;
+
+      if (canCheckBiometrics) {
+        isAuthenticated = await auth.authenticate(
+          localizedReason: 'Please authenticate to access the app',
+          options: const AuthenticationOptions(biometricOnly: true),
+        );
+      } else {}
+
+      return isAuthenticated;
+    } catch (e) {
+      return false;
+    }
+  }
+
+  void _showForm({Accounts? accounts, required WidgetRef ref}) {
+    if (accounts != null) {
+      ref.read(formDataProvider.notifier).updateMerchantName(accounts.merchantName);
+      ref.read(formDataProvider.notifier).updateUpiId(accounts.upiId);
+      ref.read(formDataProvider.notifier).updateCurrency(accounts.currency);
+      ref.read(formDataProvider.notifier).updateSelectedColor(Color(accounts.color)); // Convert int to Color
+      if (accounts.createShortcut != ref.watch(formDataProvider).createShortcut) {
+        ref.read(formDataProvider.notifier).toggleCreateShortcut();
+      }
+    } else {
+      ref.read(formDataProvider.notifier).reset();
+    }
+
+    final bool isArchived = accounts?.archived ?? false;
+    final DateTime? archiveDate = accounts?.archiveDate;
+    final bool isDeletable = !isArchived ||
+        (archiveDate != null && DateTime.now().difference(archiveDate).inDays >= 30);
+
+    showDialog(
+      context: ref.context,
+      builder: (_) => FutureBuilder<bool>(
+        future: _authenticate(),
+        builder: (context, snapshot) {
+          if (snapshot.connectionState == ConnectionState.waiting) {
+            return const Scaffold(
+              body: Center(child: CircularProgressIndicator()),
+            );
+          } else if (snapshot.hasError || !snapshot.data!) {
+            return const Scaffold(
+              body: Center(child: Text('Authentication failed')),
+            );
+          } else {
+            return dialog(accounts, isDeletable, ref);
+          }
+        },
+      ),
+    );
+  }
+
+  Consumer dialog(Accounts? accounts, bool isDeletable, WidgetRef ref) {
+    // Declare controllers outside the rebuild logic to make them persistent
+    final archivedNotifier = StateProvider<bool>((ref) => false);
+    final merchantNameController = TextEditingController();
+    final upiIdController = TextEditingController();
+
+    return Consumer(
+      builder: (context, watchRef, child) {
+        final formData = watchRef.watch(formDataProvider);
+
+        // Synchronize controller text with formData
+        merchantNameController.text = formData.merchantName;
+        merchantNameController.selection = TextSelection.fromPosition(
+          TextPosition(offset: merchantNameController.text.length),
+        );
+
+        upiIdController.text = formData.upiId;
+        upiIdController.selection = TextSelection.fromPosition(
+          TextPosition(offset: upiIdController.text.length),
+        );
+
+        return AlertDialog(
+          title: Text(accounts == null ? 'Add Account' : 'Edit Account'),
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                TextField(
+                  controller: merchantNameController,
+                  decoration: const InputDecoration(labelText: 'Merchant Name'),
+                  onChanged: (value) => ref.read(formDataProvider.notifier).updateMerchantName(value),
+                ),
+                const SizedBox(height: 16.0),
+                TextField(
+                  controller: upiIdController,
+                  decoration: const InputDecoration(labelText: 'UPI ID'),
+                  onChanged: (value) => ref.read(formDataProvider.notifier).updateUpiId(value),
+                ),
+                const SizedBox(height: 16.0),
+                Row(
+                  children: [
+                    Expanded(
+                      child: Text('Currency:', style: Theme.of(context).textTheme.bodyMedium),
+                    ),
+                    DropdownButton<String>(
+                      value: formData.currency,
+                      items: ['INR'].map((String currency) {
+                        return DropdownMenuItem<String>(
+                          value: currency,
+                          child: Text(currency),
+                        );
+                      }).toList(),
+                      onChanged: (String? newValue) {
+                        if (newValue != null) {
+                          ref.read(formDataProvider.notifier).updateCurrency(newValue);
+                        }
+                      },
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 16.0),
+                Row(
+                  children: [
+                    const Text('Choose Color:'),
+                    const SizedBox(width: 8.0),
+                    GestureDetector(
+                      onTap: () async {
+                        final color = await showDialog<Color>(
+                          context: context,
+                          builder: (context) => AlertDialog(
+                            title: const Text('Pick a color'),
+                            content: SingleChildScrollView(
+                              child: BlockPicker(
+                                pickerColor: formData.selectedColor,
+                                onColorChanged: (color) {
+                                  ref.read(formDataProvider.notifier).updateSelectedColor(color);
+                                  Navigator.of(context).pop(color);
+                                },
+                              ),
+                            ),
+                          ),
+                        );
+                        if (color != null) {
+                          ref.read(formDataProvider.notifier).updateSelectedColor(color);
+                        }
+                      },
+                      child: Container(
+                        width: 30,
+                        height: 30,
+                        color: formData.selectedColor,
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 16.0),
+                Row(
+                  children: [
+                    Checkbox(
+                      value: formData.createShortcut,
+                      onChanged: (value) {
+                        if (value != null) {
+                          ref.read(formDataProvider.notifier).toggleCreateShortcut();
+                        }
+                      },
+                    ),
+                    const Text('Create Shortcut'),
+                  ],
+                ),
+                if (accounts != null) ...[
+                  const SizedBox(height: 16.0),
+                  Row(
+                    children: [
+                      Checkbox(
+                        value: accounts.archived || formData.toggleArchived,
+                        onChanged: (value) {
+                          if (value != null) {
+                            ref.read(formDataProvider.notifier).toggleArchived();
+                            // accounts.archived = value;
+                            // accounts.archiveDate = value ? DateTime.now() : null;
+                          }
+                        },
+                      ),
+                      const Text('Archived'),
+                    ],
+                  ),
+                ],
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(),
+              child: const Text('Cancel'),
+            ),
+            if (accounts != null)
+              TextButton(
+                onPressed: () {
+                  if (!isDeletable) {
+                    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+                      content: Text(
+                          'You cannot delete this account until 30 days have passed since archiving.'),
+                    ));
+                  } else {
+                    _deleteAccounts(accounts, ref);
+                  }
+                  Navigator.of(context).pop();
+                },
+                child: Text('Delete', style: TextStyle(color: isDeletable ? Colors.red : Colors.grey)),
+              ),
+            TextButton(
+              onPressed: () {
+                if (accounts == null) {
+                  _addAccounts(ref);
+                } else {
+                  // Call your update function here
+                  _updateAccounts(accounts, ref);
+                }
+                Navigator.of(context).pop();
+              },
+              child: const Text('Save'),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  Future<void> _addAccounts(ref) async {
+    final formData = ref.watch(formDataProvider);
+    final id = accountsBox.isEmpty ? 0 : accountsBox.values.last.id + 1;
+    final accounts = Accounts(
+      id: id,
+      merchantName: formData.merchantName,
+      upiId: formData.upiId,
+      currency: formData.currency,
+      color: formData.selectedColor.value,
+      createShortcut: formData.createShortcut,
+      archived: false,
+      productIds: [],
+    );
+    await ref.read(accountsProvider.notifier).addAccount(accounts); // Use the provider to add
+    _manageQuickActions();
+
+    // await accountsBox.put(id, accounts);
+    if (formData.createShortcut) {
+      _createQuickAction(accounts);
+    }
+  }
+
+  void _createQuickAction(Accounts accounts) {
+    quickActions.setShortcutItems(<ShortcutItem>[
+      ShortcutItem(
+        type: 'create_order_${accounts.id}',
+        localizedTitle: 'Create Order for ${accounts.merchantName}',
+        //icon: 'icon_add_order',
+      ),
+    ]);
+  }
+
+  Future<void> _updateAccounts(Accounts account, ref) async{
+    final formData = ref.watch(formDataProvider);
+    account.merchantName = formData.merchantName;
+    account.upiId = formData.upiId;
+    account.currency = formData.currency;
+    account.color = formData.selectedColor.value;
+    account.createShortcut = formData.createShortcut;
+    account.archived = formData.toggleArchived;
+
+    if (account.archived == false) {
+      account.archiveDate = null;
+    } else if (account.archived) {
+      account.archiveDate = DateTime.now();
+    }
+
+    await ref.read(accountsProvider.notifier).updateAccount(account);
+    _manageQuickActions();
+    await ref.read(accountsProvider.notifier);
+  }
+
+  void _manageQuickActions() {
+    // Fetch quick actions for accounts
+    final accountShortcuts = Hive.box<Accounts>('accounts')
+        .values
+        .where((accounts) => accounts.createShortcut)
+        .map((accounts) {
+      return ShortcutItem(
+        type: 'create_order_${accounts.id}',
+        localizedTitle: 'Create Order for ${accounts.merchantName}',
+      );
+    }).toList();
+
+    // Fetch quick actions for products
+    final productShortcuts =
+    Hive.box<Product>('products').values.map((product) {
+      return ShortcutItem(
+        type: 'view_product_${product.id}',
+        localizedTitle: 'View Product ${product.name}',
+      );
+    }).toList();
+
+    // Combine both lists of shortcuts
+    final combinedShortcuts = [...accountShortcuts, ...productShortcuts];
+
+    // Set all shortcuts at once
+    quickActions.setShortcutItems(combinedShortcuts);
+  }
+
+  Future<void> _deleteAccounts(Accounts accounts, ref) async {
+    await ref.read(accountsProvider.notifier).deleteAccount(accounts);
+    _manageQuickActions(); // Refresh the quick actions
+    // await ref.read(accountsProvider.notifier);
+  }
+
+
+  void _importProductForm(Accounts accounts, context) async {
     final HttpLink httpLink = HttpLink(
       'https://dev-api-ecommerce-aggregator-drt457567g.pragament.com/graphql',
     );
@@ -1199,7 +1440,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
                   accounts.productIds.addAll(selectedProductIds);
                   Hive.box<Accounts>('accounts').put(accounts.key, accounts);
-                  setState(() {});
+                  // setState(() {});
                 },
               ),
             ],
@@ -1216,385 +1457,4 @@ class _HomeScreenState extends State<HomeScreen> {
     }
   }
 
-  void _refresh() {
-    setState(() {});
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: customAppBar(),
-      floatingActionButton: customFab(),
-      body: customBody(),
-    );
-  }
-
-  FloatingActionButton customFab() {
-    return FloatingActionButton(
-      onPressed: () => _showForm(),
-      child: const Icon(Icons.add),
-    );
-  }
-
-  AppBar customAppBar() {
-    return AppBar(
-      title: const Text('Home'),
-      actions: [
-        IconButton(
-          icon: Icon(_isAscending ? Icons.arrow_upward : Icons.arrow_downward),
-          onPressed: _toggleSortOrder,
-        ),
-        IconButton(
-          icon: Icon(_showArchived ? Icons.archive : Icons.archive_outlined),
-          onPressed: () {
-            setState(() {
-              _showArchived = !_showArchived;
-              ScaffoldMessenger.of(context).showSnackBar(
-                SnackBar(
-                  content: Text(
-                    _showArchived
-                        ? 'Showing archived accounts & products'
-                        : 'Hiding archived accounts & products',
-                  ),
-                ),
-              );
-            });
-          },
-        ),
-      ],
-      bottom: PreferredSize(
-        preferredSize: const Size.fromHeight(56.0),
-        child: Padding(
-          padding: const EdgeInsets.all(8.0),
-          child: TextField(
-            controller: _searchController,
-            decoration: InputDecoration(
-              hintText: 'Search Accounts or Products',
-              prefixIcon: const Icon(Icons.search),
-              border: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(8.0),
-              ),
-            ),
-            onChanged: _onSearchChanged,
-          ),
-        ),
-      ),
-    );
-  }
-
-  ValueListenableBuilder<String> customBody() {
-    return ValueListenableBuilder(
-      valueListenable: _searchQueryNotifier,
-      builder: (context, searchQuery, _) {
-        final accountsList = accountsBox.values.toList();
-
-        // Sort the list based on merchant name and the current sorting order
-        accountsList.sort((a, b) {
-          int compareResult = a.merchantName
-              .toLowerCase()
-              .compareTo(b.merchantName.toLowerCase());
-          return _isAscending ? compareResult : -compareResult;
-        });
-
-        // Filter the sorted list based on the search query and archived status
-        final filteredAccounts =
-        _filterAccounts(accountsList, searchQuery).where((account) {
-          if (_showArchived) {
-            return account.archived;
-          } else {
-            return !account.archived;
-          }
-        }).toList();
-
-        return ListView.builder(
-          itemCount: filteredAccounts.length,
-          itemBuilder: (context, index) {
-            final account = filteredAccounts[index];
-            final initials = getInitials(account.merchantName);
-
-            // List of products that match the search query
-            final filteredProducts = account.productIds.map((productId) {
-              return productBox.get(productId);
-            }).where((product) {
-              if (searchQuery.isEmpty) {
-                return true; // Display all products if no search query
-              }
-              return product != null &&
-                  (product.name
-                      .toLowerCase()
-                      .contains(searchQuery.toLowerCase()) ||
-                      product.description
-                          .toLowerCase()
-                          .contains(searchQuery.toLowerCase()));
-            }).toList();
-
-            // Show all products if the account matches the query
-            final shouldDisplayAllProducts = account.merchantName
-                .toLowerCase()
-                .contains(searchQuery.toLowerCase()) ||
-                account.upiId.toLowerCase().contains(searchQuery.toLowerCase());
-
-            return itemCard(
-                context,
-                account,
-                initials,
-                shouldDisplayAllProducts
-                    ? account.productIds
-                    .map((id) => productBox.get(id))
-                    .whereType<Product>()
-                    .toList()
-                    : filteredProducts);
-          },
-        );
-      },
-    );
-  }
-
-  Container itemCard(BuildContext context, Accounts accounts, String initials,
-      List<Product?> filteredProducts) {
-    return Container(
-      margin: const EdgeInsets.symmetric(vertical: 8.0, horizontal: 16.0),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Card(
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(12.0),
-            ),
-            elevation: 2,
-            child: ListTile(
-              onTap: () {
-                Navigator.of(context).push(
-                  MaterialPageRoute(
-                    builder: (context) => CreateOrderScreen(
-                      account: accounts,
-                      onOrderCreated: _refresh,
-                    ),
-                  ),
-                );
-              },
-              contentPadding: const EdgeInsets.all(16.0),
-              leading: Container(
-                width: 50,
-                height: 50,
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  color: Color(accounts.color),
-                  border: Border.all(
-                    color: Colors.white,
-                    width: 2,
-                  ),
-                ),
-                child: Center(
-                  child: Text(
-                    initials,
-                    style: const TextStyle(
-                      color: Colors.white,
-                      fontWeight: FontWeight.bold,
-                      fontSize: 18,
-                    ),
-                  ),
-                ),
-              ),
-              title: Text(accounts.merchantName),
-              subtitle: Text(formatUpiId(accounts.upiId)),
-              trailing: SizedBox(
-                width: 96, // Adjust the width as needed
-                child: Row(
-                  mainAxisSize: MainAxisSize
-                      .min, // Ensures the row does not take up more space than necessary
-                  mainAxisAlignment: MainAxisAlignment.spaceAround,
-                  children: [
-                    IconButton(
-                      icon: const Icon(Icons.history),
-                      onPressed: () {
-                        Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                            builder: (context) => TransactionScreen(
-                              account: accounts,
-                            ),
-                          ),
-                        );
-                      },
-                    ),
-                    IconButton(
-                      icon: const Icon(Icons.edit),
-                      onPressed: () => _showForm(accounts: accounts),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-          ),
-          Row(
-            children: [
-              IconButton(
-                icon: const Icon(Icons.add),
-                onPressed: () => _showAddProductForm(context, accounts),
-                padding: const EdgeInsets.all(8.0),
-              ),
-              IconButton(
-                icon: const Icon(Icons.import_export),
-                onPressed: () => _importProductForm(
-                    accounts), // Use a closure to pass the function reference
-                padding: const EdgeInsets.all(8.0),
-              ),
-              IconButton(
-                icon: const Icon(Icons.arrow_forward),
-                onPressed: () {
-                  Navigator.of(context).push(
-                    MaterialPageRoute(
-                      builder: (context) => ProductListScreen(
-                        accounts: accounts,
-                        // productBox: productBox,
-                        showEditProductForm: _showEditProductForm,
-                        // refreshHomeScreen: _refresh,
-                      ),
-                    ),
-                  );
-                },
-                padding: const EdgeInsets.all(8.0),
-              ),
-            ],
-          ),
-          SizedBox(
-            height: filteredProducts.isNotEmpty ? 110 : 0,
-            child: ListView.builder(
-              scrollDirection: Axis.horizontal,
-              itemCount: filteredProducts.length,
-              itemBuilder: (context, index) {
-                final product = filteredProducts[index];
-
-                return productTile(product, accounts, () {
-                  setState(() {});
-                });
-              },
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  GestureDetector productTile(
-      Product? product, Accounts accounts, Function() refreshCallback) {
-    return GestureDetector(
-      onTap: () {
-        if (product != null) {
-          Navigator.of(context).push(
-            MaterialPageRoute(
-              builder: (context) => CreateOrderScreen(
-                account: accounts, products: [product],
-                onOrderCreated: _refresh,
-                // Passing the product price as the amount
-              ),
-            ),
-          );
-        }
-      },
-      child: Container(
-        width: 220,
-        height: 120,
-        margin: const EdgeInsets.symmetric(horizontal: 8.0),
-        decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(8.0),
-        ),
-        child: Stack(
-          children: [
-            Padding(
-              padding: const EdgeInsets.all(8.0),
-              child: Row(
-                children: [
-                  Expanded(
-                    child: Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          product != null && product.name.isNotEmpty
-                              ? product.name
-                              : 'Unknown Product',
-                          style: const TextStyle(
-                              color: Colors.black,
-                              fontWeight: FontWeight.bold,
-                              fontSize: 16.0,
-                              overflow: TextOverflow.ellipsis),
-                          textAlign: TextAlign.left,
-                        ),
-                        const SizedBox(height: 4.0),
-                        Text(
-                          product != null
-                              ? '₹${product.price.toString()}'
-                              : 'Price not available',
-                          style: const TextStyle(
-                            color: Colors.black,
-                            fontWeight: FontWeight.bold,
-                            fontSize: 14.0,
-                          ),
-                          textAlign: TextAlign.left,
-                        ),
-                        const SizedBox(height: 4.0),
-                        Text(
-                          product != null && product.description.isNotEmpty
-                              ? product.description
-                              : 'No description available',
-                          style: const TextStyle(
-                            color: Colors.black,
-                            fontSize: 14.0,
-                          ),
-                          textAlign: TextAlign.left,
-                          maxLines: 2,
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                      ],
-                    ),
-                  ),
-                  const SizedBox(width: 8.0),
-                  if (product != null && product.imageUrl.isNotEmpty)
-                    ClipRRect(
-                      borderRadius: BorderRadius.circular(8.0),
-                      child: product.imageUrl.startsWith('http')
-                          ? SizedBox()
-                      // Image.network(
-                      //     product.imageUrl,
-                      //     height: 0,
-                      //     width: 0,
-                      //     fit: BoxFit.cover,
-                      //   )
-                          : Image.file(
-                        File(product.imageUrl),
-                        height: 100,
-                        width: 100,
-                        fit: BoxFit.cover,
-                      ),
-                    )
-                  else
-                    const Icon(Icons.category, color: Colors.grey, size: 100),
-                ],
-              ),
-            ),
-            Positioned(
-              top: 0,
-              right: 0,
-              child: IconButton(
-                icon: const Icon(
-                  Icons.edit,
-                  color: Colors.black,
-                  size: 30,
-                ),
-                onPressed: () {
-                  if (product != null) {
-                    _showEditProductForm(
-                        context, product, accounts, refreshCallback, WidgetRef as Function());
-                  }
-                },
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
 }

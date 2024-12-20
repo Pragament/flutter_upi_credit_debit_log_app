@@ -132,12 +132,7 @@ final showArchivedProvider = StateNotifierProvider<ShowArchivedNotifier, bool>(
       (ref) => ShowArchivedNotifier(),
 );
 
-// StateNotifier for managing the list of products
-// final productProvider = StateNotifierProvider<ProductNotifier, List<Product>>(
-//       (ref) => ProductNotifier(),
-// );
-
 
 void _refresh(ref) {
-  // Implement refresh logic if needed
+
 }

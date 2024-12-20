@@ -15,9 +15,22 @@ class ProductNotifier extends StateNotifier<List<Product>> {
 
   void updateProduct(Product updatedProduct) {
     state = state.map((product) => product.id == updatedProduct.id ? updatedProduct : product).toList();
-    // Optionally save to Hive or any other database here
+    final productBox = Hive.box<Product>('products');
+    productBox.put(updatedProduct.id, updatedProduct);
   }
-// Add other methods as needed (e.g., update, delete)
+
+  Future<void> fetchProducts(List<int> productIds) async {
+    var box = Hive.box<Product>('products');
+    List<Product> products = [];
+    for (int productId in productIds) {
+      var product = box.get(productId);
+      if (product != null) {
+        products.add(product);
+      }
+    }
+    state = products; // Update the state with fetched products
+  }
+
 }
 
 // Create a provider for the ProductNotifier
