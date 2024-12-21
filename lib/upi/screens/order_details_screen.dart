@@ -320,11 +320,11 @@ class OrderDetailsScreen extends StatelessWidget {
                 pw.Text('Scan the QR code to pay:',
                     style: const pw.TextStyle(fontSize: 18)),
                 pw.SizedBox(height: 10),
-                pw.Image(
+                order.qrCodeUrl.isNotEmpty ? pw.Image(
                   pw.MemoryImage(File(order.qrCodeUrl).readAsBytesSync()),
                   width: 100,
                   height: 100,
-                ),
+                ): pw.Text("Qr Not found"),
                 pw.Spacer(),
                 _buildFooter(bgShape),
               ],

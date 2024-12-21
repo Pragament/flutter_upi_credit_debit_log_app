@@ -53,7 +53,7 @@ class _CreateOrderScreenState extends ConsumerState<CreateOrderScreen> {
   void initState() {
     super.initState();
     _account = widget.account;
-    ref.read(productProvider.notifier).fetchProducts(widget.account.productIds); // Fetch products when initializing
+    Future.microtask(() => _fetchAllProducts());
   }
 
   @override
@@ -63,6 +63,19 @@ class _CreateOrderScreenState extends ConsumerState<CreateOrderScreen> {
     _clientNotesController.dispose();
     _utrController.dispose();
     super.dispose();
+  }
+
+  Future<void> _fetchAllProducts() async {
+    // Accessing the product provider
+    final productNotifier = ref.read(productProvider.notifier);
+    print("Fetching all products");
+    // Fetch all products
+    await productNotifier.fetchAllProducts();
+
+    // Update local state with fetched products
+    setState(() {
+      _products = productNotifier.state; // Get the updated state
+    });
   }
 
   double _calculateTotalAmount() {
@@ -226,9 +239,9 @@ class _CreateOrderScreenState extends ConsumerState<CreateOrderScreen> {
   }
 
   void _showProductSelectionDialog() {
+
     TextEditingController searchController = TextEditingController();
-    List<Product> filteredProducts =
-    List.from(_products!); // Initialize filtered products
+    List<Product> filteredProducts = List.from(_products!); // Initialize filtered products
 
     showDialog(
       context: context,
