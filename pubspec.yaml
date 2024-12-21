@@ -136,6 +136,7 @@ flutter:
   assets:
     - assets/pre_populated_cities.sqlite
     - assets/google_fonts/
+    - assets/invoice.svg
     - .env
     - .env.dev
     - .env.qa
