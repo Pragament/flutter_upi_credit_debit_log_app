@@ -1,6 +1,5 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:hive/hive.dart';
-
 import '../model/pay.dart';
 
 // Define a ProductNotifier to manage product state
@@ -31,6 +30,21 @@ class ProductNotifier extends StateNotifier<List<Product>> {
     state = products; // Update the state with fetched products
   }
 
+  Future<void> fetchAllProducts() async {
+    var box = Hive.box<Product>('products');
+    List<Product> products = [];
+
+    // Retrieve all keys from the box and fetch each corresponding product
+    final keys = box.keys.cast<int>();
+    for (int key in keys) {
+      var product = box.get(key);
+      if (product != null) {
+        products.add(product);
+      }
+    }
+
+    state = products; // Update the state with fetched products
+  }
 }
 
 // Create a provider for the ProductNotifier
