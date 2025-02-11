@@ -230,14 +230,13 @@ class HomeScreen extends ConsumerWidget {
               ),
             ],
           ),
-          SizedBox(
+          SizedBox(     // i have to work in row line numer 233 at home_screen
             height: filteredProducts.isNotEmpty ? 110 : 0,
             child: ListView.builder(
               scrollDirection: Axis.horizontal,
               itemCount: filteredProducts.length,
               itemBuilder: (context, index) {
                 final product = filteredProducts[index];
-
                 return productTile(product, accounts, ref, () {
                   // setState(() {});
                 });
@@ -665,6 +664,7 @@ class HomeScreen extends ConsumerWidget {
   }
 
   GestureDetector productTile(Product? product, Accounts accounts, ref, Function() refreshCallback) {
+    print(product);
     return GestureDetector(
       onTap: () {
         if (product != null) {
