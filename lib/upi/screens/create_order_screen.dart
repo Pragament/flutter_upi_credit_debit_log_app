@@ -5,6 +5,7 @@ import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_template/upi/screens/transaction_screen.dart';
+import 'package:google_mlkit_text_recognition/google_mlkit_text_recognition.dart';
 import 'package:hive/hive.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:qr_flutter/qr_flutter.dart';
@@ -17,12 +18,16 @@ import '../utils/utils.dart';
 class CreateOrderScreen extends ConsumerStatefulWidget {
   final Accounts account;
   final List<Product>? products;
+  final Product? currentproduct;
   final Function onOrderCreated;
+  //final Product? selectedProduct;
 
   const CreateOrderScreen({
     Key? key,
     required this.account,
     this.products,
+    this.currentproduct,
+  //  this.selectedProduct,
     required this.onOrderCreated,
   }) : super(key: key);
 
@@ -41,10 +46,12 @@ class _CreateOrderScreenState extends ConsumerState<CreateOrderScreen> {
   String? _clientTxnId;
   late Accounts _account;
   List<Product>? _products;
-
   Timer? _timer;
 
-  bool _includeAmountInQr = false;
+  File? _image;
+  String _recognizedText = "";
+
+  bool _includeAmountInQr = true;
 
   List<Product> _selectedProducts = [];
   final Map<Product, int> _selectedProductQuantities = {};
@@ -76,6 +83,7 @@ class _CreateOrderScreenState extends ConsumerState<CreateOrderScreen> {
     setState(() {
       _products = productNotifier.state; // Get the updated state
     });
+    _generateQrCode();
   }
 
   double _calculateTotalAmount() {
@@ -500,7 +508,10 @@ class _CreateOrderScreenState extends ConsumerState<CreateOrderScreen> {
           if (isInvoice) {
             _invoiceImage = pickedFile.path;
           } else {
+
             _transactionImage = pickedFile.path;
+            _image = File(_transactionImage!);
+           _recognizeText();
           }
         });
       } else {
@@ -513,6 +524,41 @@ class _CreateOrderScreenState extends ConsumerState<CreateOrderScreen> {
 
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('Failed to pick image: $e')),
+      );
+    }
+  }
+  Future<void> _recognizeText() async {
+    if (_image == null) return;
+
+    final inputImage = InputImage.fromFile(_image!);
+    final textRecognizer = TextRecognizer();
+    final RecognizedText recognizedText = await textRecognizer.processImage(inputImage);
+    processExtractedText(recognizedText.text);
+    textRecognizer.close();
+  }
+  void processExtractedText(String recognizedText) {
+    // RegExp preferredRegExp = RegExp(r'\b(?:ID|Transaction|UTR)\D*(\d{12})\b', caseSensitive: false);
+    // RegExp fallbackRegExp = RegExp(r'\b\d{12}\b'); // Fallback to any 12-digit number
+    //
+    // Match? match = preferredRegExp.firstMatch(recognizedText) ?? fallbackRegExp.firstMatch(recognizedText);
+    RegExp regExp = RegExp(r'\b\d{12}\b'); // Match only standalone 12-digit numbers
+    Match? match = regExp.firstMatch(recognizedText);
+
+    if (match != null) {
+      String transactionID = match.group(0)!;
+      setState(() {
+        _recognizedText = transactionID;
+        _utrController.text=_recognizedText;
+
+      });
+
+    } else {
+      setState(() {
+        _utrController.text="XXXXXXXXXXXX";
+      });
+      print('Transaction ID not found');
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Transection ID not found')),
       );
     }
   }
