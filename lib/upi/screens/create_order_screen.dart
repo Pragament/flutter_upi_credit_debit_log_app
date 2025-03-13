@@ -15,6 +15,13 @@ import '../provider/order_provider.dart';
 import '../provider/product_provider.dart';
 import '../utils/utils.dart';
 
+import 'dart:io';
+import 'dart:typed_data';
+import 'dart:ui' as ui;
+import 'package:flutter/rendering.dart';
+import 'package:path_provider/path_provider.dart';
+import 'package:share_plus/share_plus.dart';
+
 class CreateOrderScreen extends ConsumerStatefulWidget {
   final Accounts account;
   final List<Product>? products;
@@ -55,6 +62,7 @@ class _CreateOrderScreenState extends ConsumerState<CreateOrderScreen> {
 
   List<Product> _selectedProducts = [];
   final Map<Product, int> _selectedProductQuantities = {};
+  final GlobalKey _qrKey = GlobalKey();
 
   @override
   void initState() {
@@ -97,14 +105,17 @@ class _CreateOrderScreenState extends ConsumerState<CreateOrderScreen> {
   void _generateQrCode() {
     if (widget.account.upiId.isEmpty || widget.account.merchantName.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('UPI ID or Merchant Name is missing. Please configure it in accounts.')),
+        const SnackBar(
+            content: Text(
+                'UPI ID or Merchant Name is missing. Please configure it in accounts.')),
       );
       return;
     }
 
     setState(() {
       _clientTxnId = DateTime.now().millisecondsSinceEpoch.toString();
-      String qrData = 'upi://pay?pa=${widget.account.upiId}&pn=${widget.account.merchantName}';
+      String qrData =
+          'upi://pay?pa=${widget.account.upiId}&pn=${widget.account.merchantName}';
       if (_includeAmountInQr) {
         qrData += '&am=${_amountController.text}';
       }
@@ -122,8 +133,8 @@ class _CreateOrderScreenState extends ConsumerState<CreateOrderScreen> {
         _invoiceImage == null ||
         _utrController.text.isEmpty ||
         _transactionImage == null) {
-
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Please fill in all details')));
+      ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Please fill in all details')));
       return;
     }
 
@@ -149,19 +160,23 @@ class _CreateOrderScreenState extends ConsumerState<CreateOrderScreen> {
         products: productsMap,
       );
 
-      ref.read(orderProvider.notifier).addOrder(order); // Use Riverpod to add order
+      ref
+          .read(orderProvider.notifier)
+          .addOrder(order); // Use Riverpod to add order
 
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Order created successfully')));
+      ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Order created successfully')));
 
       // Reset fields after successful upload
       setState(() {
         // Reset fields logic...
       });
 
-      Navigator.pushReplacement(context, MaterialPageRoute(builder: (context) => const TransactionScreen()));
-
+      Navigator.pushReplacement(context,
+          MaterialPageRoute(builder: (context) => const TransactionScreen()));
     } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Failed to create order: $e')));
+      ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text('Failed to create order: $e')));
     }
   }
 
@@ -169,13 +184,16 @@ class _CreateOrderScreenState extends ConsumerState<CreateOrderScreen> {
     // Implement this method to show the form for adding a new product using Riverpod.
 
     final TextEditingController productNameController = TextEditingController();
-    final TextEditingController productDescriptionController = TextEditingController();
-    final TextEditingController productPriceController = TextEditingController();
+    final TextEditingController productDescriptionController =
+        TextEditingController();
+    final TextEditingController productPriceController =
+        TextEditingController();
 
     File? pickedImageFile;
 
     Future<void> pickImage(StateSetter setState) async {
-      final pickedFile = await ImagePicker().pickImage(source: ImageSource.gallery);
+      final pickedFile =
+          await ImagePicker().pickImage(source: ImageSource.gallery);
       if (pickedFile != null) {
         setState(() {
           pickedImageFile = File(pickedFile.path);
@@ -186,59 +204,95 @@ class _CreateOrderScreenState extends ConsumerState<CreateOrderScreen> {
     showDialog(
       context: context,
       builder: (BuildContext context) {
-        return StatefulBuilder(builder: (BuildContext context, StateSetter setState) {
+        return StatefulBuilder(
+            builder: (BuildContext context, StateSetter setState) {
           return AlertDialog(
             title: const Text('Add New Product'),
             content: SingleChildScrollView(
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  TextField(controller: productNameController, decoration: const InputDecoration(hintText: 'Enter product name'), autofocus:true),
-                  const SizedBox(height :8.0),
-                  TextField(controller :productDescriptionController ,decoration :const InputDecoration(hintText:'Enter product description'),maxLines :3),
-                  const SizedBox(height :8.0),
-                  TextField(controller :productPriceController ,decoration :const InputDecoration(hintText:'Enter product price'),keyboardType :TextInputType.number),
-                  const SizedBox(height :8.0),
+                  TextField(
+                      controller: productNameController,
+                      decoration:
+                          const InputDecoration(hintText: 'Enter product name'),
+                      autofocus: true),
+                  const SizedBox(height: 8.0),
+                  TextField(
+                      controller: productDescriptionController,
+                      decoration: const InputDecoration(
+                          hintText: 'Enter product description'),
+                      maxLines: 3),
+                  const SizedBox(height: 8.0),
+                  TextField(
+                      controller: productPriceController,
+                      decoration: const InputDecoration(
+                          hintText: 'Enter product price'),
+                      keyboardType: TextInputType.number),
+                  const SizedBox(height: 8.0),
                   GestureDetector(
                     onTap: () => pickImage(setState),
-                    child: pickedImageFile != null ? Image.file(pickedImageFile!, height :150,width :150 ,fit :BoxFit.cover,) :
-                    Container(height :50,width :50,color :Colors.grey[300],child :const Icon(Icons.add_a_photo,color :Colors.white)),
+                    child: pickedImageFile != null
+                        ? Image.file(
+                            pickedImageFile!,
+                            height: 150,
+                            width: 150,
+                            fit: BoxFit.cover,
+                          )
+                        : Container(
+                            height: 50,
+                            width: 50,
+                            color: Colors.grey[300],
+                            child: const Icon(Icons.add_a_photo,
+                                color: Colors.white)),
                   ),
                 ],
               ),
             ),
-            actions:<Widget>[
-              TextButton(onPressed :() {
-                final productName = productNameController.text.trim();
-                final productDescription = productDescriptionController.text.trim();
-                final productPrice = double.tryParse(productPriceController.text.trim()) ?? 0.0;
+            actions: <Widget>[
+              TextButton(
+                  onPressed: () {
+                    final productName = productNameController.text.trim();
+                    final productDescription =
+                        productDescriptionController.text.trim();
+                    final productPrice =
+                        double.tryParse(productPriceController.text.trim()) ??
+                            0.0;
 
-                if (productName.isNotEmpty) {
-                  // Generate a unique ID by using the next available integer key
-                  final productBox = Hive.box<Product>('products');
-                  final int newProductId = productBox.isEmpty ? 0 : productBox.keys.cast<int>().last + 1;
+                    if (productName.isNotEmpty) {
+                      // Generate a unique ID by using the next available integer key
+                      final productBox = Hive.box<Product>('products');
+                      final int newProductId = productBox.isEmpty
+                          ? 0
+                          : productBox.keys.cast<int>().last + 1;
 
-                  // Create the new product
-                  final newProduct = Product(
-                    id:newProductId,
-                    name :productName,
-                    price :productPrice,
-                    description :productDescription,
-                    imageUrl:pickedImageFile!.path,
-                  );
+                      // Create the new product
+                      final newProduct = Product(
+                        id: newProductId,
+                        name: productName,
+                        price: productPrice,
+                        description: productDescription,
+                        imageUrl: pickedImageFile!.path,
+                      );
 
-                  // Save the product to the Hive box and update provider
-                  ref.read(productProvider.notifier).addProduct(newProduct);
+                      // Save the product to the Hive box and update provider
+                      ref.read(productProvider.notifier).addProduct(newProduct);
 
-                  // Update the accounts with the new product ID
-                  widget.account.productIds.add(newProductId);
-                  Hive.box<Accounts>('accounts').put(widget.account.key, widget.account);
+                      // Update the accounts with the new product ID
+                      widget.account.productIds.add(newProductId);
+                      Hive.box<Accounts>('accounts')
+                          .put(widget.account.key, widget.account);
 
-                  Navigator.of(context).pop();
-                  widget.onOrderCreated();
-                }
-              }, child: const Text('Save')),
-              TextButton(onPressed :() { Navigator.of(context).pop(); }, child: const Text('Cancel')),
+                      Navigator.of(context).pop();
+                      widget.onOrderCreated();
+                    }
+                  },
+                  child: const Text('Save')),
+              TextButton(
+                  onPressed: () {
+                    Navigator.of(context).pop();
+                  },
+                  child: const Text('Cancel')),
             ],
           );
         });
@@ -247,9 +301,9 @@ class _CreateOrderScreenState extends ConsumerState<CreateOrderScreen> {
   }
 
   void _showProductSelectionDialog() {
-
     TextEditingController searchController = TextEditingController();
-    List<Product> filteredProducts = List.from(_products!); // Initialize filtered products
+    List<Product> filteredProducts =
+        List.from(_products!); // Initialize filtered products
 
     showDialog(
       context: context,
@@ -303,16 +357,18 @@ class _CreateOrderScreenState extends ConsumerState<CreateOrderScreen> {
                         itemBuilder: (context, index) {
                           final product = filteredProducts[index];
                           final isSelected =
-                          _selectedProducts.contains(product);
+                              _selectedProducts.contains(product);
 
                           return ListTile(
                             leading: SizedBox(
                               width: 40.0, // Adjust the width as needed
                               height: 40.0, // Adjust the height as needed
-                              child:product.imageUrl.isNotEmpty? Image.file(
-                                File(product.imageUrl),
-                                fit: BoxFit.cover,
-                              ):SizedBox(),
+                              child: product.imageUrl.isNotEmpty
+                                  ? Image.file(
+                                      File(product.imageUrl),
+                                      fit: BoxFit.cover,
+                                    )
+                                  : SizedBox(),
                             ),
                             title: Text(product.name),
                             subtitle: Text(
@@ -401,27 +457,34 @@ class _CreateOrderScreenState extends ConsumerState<CreateOrderScreen> {
             final quantity = _selectedProductQuantities[product] ?? 1;
 
             return Card(
-              margin: const EdgeInsets.symmetric(horizontal: 8.0), // Reduced margin
+              margin:
+                  const EdgeInsets.symmetric(horizontal: 8.0), // Reduced margin
               child: Container(
-                padding: const EdgeInsets.all(8.0), // Reduce padding even further
+                padding:
+                    const EdgeInsets.all(8.0), // Reduce padding even further
                 child: Column(
                   mainAxisSize: MainAxisSize.min, // Minimize extra space
-                  crossAxisAlignment: CrossAxisAlignment.start, // Align content to the start
+                  crossAxisAlignment:
+                      CrossAxisAlignment.start, // Align content to the start
                   children: [
                     Row(
-                      crossAxisAlignment: CrossAxisAlignment.center, // Center-align within row
+                      crossAxisAlignment:
+                          CrossAxisAlignment.center, // Center-align within row
                       children: [
                         SizedBox(
                           height: 50.0, // Reduced height for the image
                           width: 50.0, // Reduced width for the image
-                          child: product.imageUrl.isNotEmpty?Image.file(
-                            File(product.imageUrl),
-                            fit: BoxFit.cover,
-                          ):SizedBox(),
+                          child: product.imageUrl.isNotEmpty
+                              ? Image.file(
+                                  File(product.imageUrl),
+                                  fit: BoxFit.cover,
+                                )
+                              : SizedBox(),
                         ),
                         const SizedBox(width: 2.0), // Minimal gap
                         Column(
-                          crossAxisAlignment: CrossAxisAlignment.start, // Align text to the start
+                          crossAxisAlignment: CrossAxisAlignment
+                              .start, // Align text to the start
                           children: [
                             Text(
                               product.name,
@@ -440,41 +503,52 @@ class _CreateOrderScreenState extends ConsumerState<CreateOrderScreen> {
                         ),
                       ],
                     ),
-                    SizedBox(height: 20,
+                    SizedBox(
+                      height: 20,
                       child: Row(
-                        mainAxisAlignment: MainAxisAlignment.start, // Align buttons to start
+                        mainAxisAlignment:
+                            MainAxisAlignment.start, // Align buttons to start
                         children: [
                           IconButton(
                             iconSize: 14.0, // Further reduced icon size
-                            padding: EdgeInsets.zero, // Remove padding around icon button
-                            constraints: const BoxConstraints(), // Remove constraints to fit better
+                            padding: EdgeInsets
+                                .zero, // Remove padding around icon button
+                            constraints:
+                                const BoxConstraints(), // Remove constraints to fit better
                             icon: const Icon(Icons.remove),
                             onPressed: () {
                               setState(() {
                                 if (quantity > 1) {
-                                  _selectedProductQuantities[product] = quantity - 1;
+                                  _selectedProductQuantities[product] =
+                                      quantity - 1;
                                 } else {
                                   _selectedProducts.remove(product);
                                   _selectedProductQuantities.remove(product);
                                 }
-                                _amountController.text = _calculateTotalAmount().toStringAsFixed(2);
+                                _amountController.text =
+                                    _calculateTotalAmount().toStringAsFixed(2);
                                 _generateQrCode();
                               });
                             },
                           ),
                           Text(
                             quantity.toString(),
-                            style: const TextStyle(fontSize: 10.0), // Reduced font size
+                            style: const TextStyle(
+                                fontSize: 10.0), // Reduced font size
                           ),
                           IconButton(
                             iconSize: 14.0, // Further reduced icon size
-                            padding: EdgeInsets.zero, // Remove padding around icon button
-                            constraints: const BoxConstraints(), // Remove constraints to fit better
+                            padding: EdgeInsets
+                                .zero, // Remove padding around icon button
+                            constraints:
+                                const BoxConstraints(), // Remove constraints to fit better
                             icon: const Icon(Icons.add),
                             onPressed: () {
                               setState(() {
-                                _selectedProductQuantities[product] = quantity + 1;
-                                _amountController.text = _calculateTotalAmount().toStringAsFixed(2);
+                                _selectedProductQuantities[product] =
+                                    quantity + 1;
+                                _amountController.text =
+                                    _calculateTotalAmount().toStringAsFixed(2);
                                 _generateQrCode();
                               });
                             },
@@ -484,7 +558,8 @@ class _CreateOrderScreenState extends ConsumerState<CreateOrderScreen> {
                     ),
                     Text(
                       'Total: ₹${(product.price * quantity).toStringAsFixed(2)}',
-                      style: const TextStyle(fontSize: 10.0), // Smaller font size
+                      style:
+                          const TextStyle(fontSize: 10.0), // Smaller font size
                     ),
                   ],
                 ),
@@ -497,10 +572,11 @@ class _CreateOrderScreenState extends ConsumerState<CreateOrderScreen> {
       return const Text('No products selected');
     }
   }
+
   Future<void> _pickImage(bool isInvoice) async {
     try {
       final pickedFile =
-      await ImagePicker().pickImage(source: ImageSource.gallery);
+          await ImagePicker().pickImage(source: ImageSource.gallery);
       if (!mounted) return;
 
       if (pickedFile != null) {
@@ -563,8 +639,6 @@ class _CreateOrderScreenState extends ConsumerState<CreateOrderScreen> {
     }
   }
 
-
-
   Widget _buildImagePicker(String? imagePath, bool isInvoice) {
     return GestureDetector(
       onTap: () => _pickImage(isInvoice),
@@ -578,30 +652,103 @@ class _CreateOrderScreenState extends ConsumerState<CreateOrderScreen> {
         height: 150.0,
         child: imagePath == null
             ? Center(
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Icon(
-                Icons.image,
-                size: 50,
-                color: Colors.grey[600],
-              ),
-              const SizedBox(height: 8.0),
-              Text(
-                isInvoice
-                    ? 'Select Invoice Image'
-                    : 'Select Transaction Image',
-                textAlign: TextAlign.center,
-                style: TextStyle(color: Colors.grey[600]),
-              ),
-            ],
-          ),
-        )
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Icon(
+                      Icons.image,
+                      size: 50,
+                      color: Colors.grey[600],
+                    ),
+                    const SizedBox(height: 8.0),
+                    Text(
+                      isInvoice
+                          ? 'Select Invoice Image'
+                          : 'Select Transaction Image',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(color: Colors.grey[600]),
+                    ),
+                  ],
+                ),
+              )
             : Image.file(File(imagePath), fit: BoxFit.cover),
       ),
     );
   }
 
+  Future<void> _shareQrCode() async {
+    try {
+      // Ensure UI has finished rendering before capturing
+      await Future.delayed(Duration(milliseconds: 1000));
+      await WidgetsBinding.instance.endOfFrame;
+
+      // Ensure QR key context exists
+      if (_qrKey.currentContext == null) {
+        print("QR Key context is null, skipping capture.");
+        return;
+      }
+
+      RenderRepaintBoundary boundary =
+          _qrKey.currentContext!.findRenderObject() as RenderRepaintBoundary;
+
+      // Capture image
+      ui.Image image = await boundary.toImage(pixelRatio: 3.0);
+      ByteData? byteData =
+          await image.toByteData(format: ui.ImageByteFormat.png);
+      if (byteData == null) {
+        print("Error: QR Code image is null.");
+        return;
+      }
+
+      Uint8List pngBytes = byteData.buffer.asUint8List();
+
+      // Save to temporary file
+      final tempDir = await getTemporaryDirectory();
+      final file = await File('${tempDir.path}/qr_code.png').create();
+      await file.writeAsBytes(pngBytes);
+
+      // Share the file
+      await Share.shareXFiles([XFile(file.path)],
+          text: "Scan this QR Code to pay");
+    } catch (e) {
+      print("Error sharing QR Code: $e");
+    }
+  }
+
+  Future<void> _downloadQrCode() async {
+    try {
+      RenderRepaintBoundary boundary =
+          _qrKey.currentContext!.findRenderObject() as RenderRepaintBoundary;
+
+      // Ensure QR code is fully rendered before capturing
+      ui.Image image = await boundary.toImage(pixelRatio: 3.0);
+      ByteData? byteData =
+          await image.toByteData(format: ui.ImageByteFormat.png);
+      Uint8List pngBytes = byteData!.buffer.asUint8List();
+
+      // Get the Downloads directory
+      final directory =
+          Directory('/storage/emulated/0/Download'); // Android Downloads folder
+      if (!directory.existsSync()) {
+        directory.createSync(recursive: true);
+      }
+
+      final filePath =
+          '${directory.path}/QR_Code_${DateTime.now().millisecondsSinceEpoch}.png';
+      final file = File(filePath);
+      await file.writeAsBytes(pngBytes);
+
+      // Notify user
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('QR Code saved to Downloads: $filePath')),
+      );
+    } catch (e) {
+      print("Error saving QR Code: $e");
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Failed to save QR Code')),
+      );
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -646,7 +793,40 @@ class _CreateOrderScreenState extends ConsumerState<CreateOrderScreen> {
                 ),
               ),
               const SizedBox(height: 16.0),
-              _buildQRCodeWidget(),
+
+              if (_qrCodeData != null) ...[
+                RepaintBoundary(
+                  key: _qrKey,
+                  child: Container(
+                    color: Colors.white, // Ensure white background
+                    padding: const EdgeInsets.all(16), // Add padding if needed
+                    child: QrImageView(
+                      data: _qrCodeData!,
+                      size: 200,
+                      backgroundColor:
+                          Colors.white, // Explicitly set QR background to white
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 16),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    ElevatedButton.icon(
+                      onPressed: _shareQrCode,
+                      icon: const Icon(Icons.share),
+                      label: const Text('Share QR Code'),
+                    ),
+                    const SizedBox(width: 8), // Add spacing between buttons
+                    ElevatedButton.icon(
+                      onPressed: _downloadQrCode,
+                      icon: const Icon(Icons.download),
+                      label: const Text('Download QR Code'),
+                    ),
+                  ],
+                ),
+              ],
+
               const SizedBox(height: 16.0),
 
               // Checkbox for including amount in QR
@@ -675,6 +855,7 @@ class _CreateOrderScreenState extends ConsumerState<CreateOrderScreen> {
                       child: _buildImagePicker(_invoiceImage, true),
                     ),
                   ),
+                  const SizedBox(width: 8), // Adjust spacing
                   Expanded(
                     child: Padding(
                       padding: const EdgeInsets.only(left: 8.0),
@@ -691,11 +872,6 @@ class _CreateOrderScreenState extends ConsumerState<CreateOrderScreen> {
                   border: OutlineInputBorder(),
                 ),
               ),
-              const SizedBox(height: 16.0),
-              // ElevatedButton(
-              //   onPressed: _generateQrCode,
-              //   child: const Text('Generate QR Code'),
-              // ),
               const SizedBox(height: 16.0),
               ElevatedButton(
                 onPressed: _uploadOrder,
@@ -717,7 +893,7 @@ class _CreateOrderScreenState extends ConsumerState<CreateOrderScreen> {
 
     // Choose a color for the avatar background
     Color avatarColor =
-    Color(_account.color); // You can change this to any color you prefer
+        Color(_account.color); // You can change this to any color you prefer
 
     return Card(
       elevation: 4.0,
