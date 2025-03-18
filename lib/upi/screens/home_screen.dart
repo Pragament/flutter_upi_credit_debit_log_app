@@ -1,5 +1,4 @@
 import 'dart:io';
-
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_colorpicker/flutter_colorpicker.dart';
@@ -21,6 +20,12 @@ import '../provider/product_provider.dart';
 import '../provider/riverpod_provider.dart';
 import '../utils/utils.dart';
 import 'create_order_screen.dart';
+
+import 'dart:async'; // ✅ For Completer
+import 'dart:io'; // ✅ For File operations
+import 'package:image_picker/image_picker.dart'; // ✅ For Image Picker
+
+import 'package:qr_code_scanner_plus/qr_code_scanner_plus.dart';
 
 final accountsBox = Hive.box<Accounts>('accounts');
 final productBox = Hive.box<Product>('products');
@@ -45,7 +50,6 @@ class HomeScreen extends ConsumerWidget {
     );
   }
 
-
   List<Accounts> filterAccounts(List<Accounts> accountsList, String query) {
     if (query.isEmpty) return accountsList;
 
@@ -69,21 +73,21 @@ class HomeScreen extends ConsumerWidget {
     }).toList();
   }
 
-
-  Widget customBody(WidgetRef ref, List<Accounts> accountsList, List<Product> productsList) {
+  Widget customBody(
+      WidgetRef ref, List<Accounts> accountsList, List<Product> productsList) {
     final isAscending = ref.watch(sortOrderProvider);
     final showArchived = ref.watch(showArchivedProvider);
     final searchQuery = ref.watch(searchQueryProviders);
 
     // Fetch and filter accounts
     accountsList.sort((a, b) {
-      int compareResult = a.merchantName
-          .toLowerCase()
-          .compareTo(b.merchantName.toLowerCase());
+      int compareResult =
+          a.merchantName.toLowerCase().compareTo(b.merchantName.toLowerCase());
       return isAscending ? compareResult : -compareResult;
     });
 
-    final filteredAccounts = filterAccounts(accountsList, searchQuery).where((account) {
+    final filteredAccounts =
+        filterAccounts(accountsList, searchQuery).where((account) {
       if (showArchived) {
         return account.archived;
       } else {
@@ -97,30 +101,43 @@ class HomeScreen extends ConsumerWidget {
         final account = filteredAccounts[index];
         final initials = getInitials(account.merchantName);
 
-        final filteredProducts = account.productIds.map((productId) {
-          return productsList.firstWhere(
+        final filteredProducts = account.productIds
+            .map((productId) {
+              return productsList.firstWhere(
                 (product) => product.id == productId,
-            orElse: () => Product(id: -1, name: 'Unknown', price: 0.0, description: '', imageUrl: ''), // Provide a default Product
-          );
-        }).where((product) => product.id != -1).toList(); // Filter out the default Product
+                orElse: () => Product(
+                    id: -1,
+                    name: 'Unknown',
+                    price: 0.0,
+                    description: '',
+                    imageUrl: ''), // Provide a default Product
+              );
+            })
+            .where((product) => product.id != -1)
+            .toList(); // Filter out the default Product
 
-
-        final shouldDisplayAllProducts = account.merchantName.toLowerCase().contains(searchQuery.toLowerCase()) ||
+        final shouldDisplayAllProducts = account.merchantName
+                .toLowerCase()
+                .contains(searchQuery.toLowerCase()) ||
             account.upiId.toLowerCase().contains(searchQuery.toLowerCase());
 
         return itemCard(
           context,
           account,
           initials,
-          shouldDisplayAllProducts ? account.productIds.map((id) => productBox.get(id)).whereType<Product>().toList() : filteredProducts,
+          shouldDisplayAllProducts
+              ? account.productIds
+                  .map((id) => productBox.get(id))
+                  .whereType<Product>()
+                  .toList()
+              : filteredProducts,
           ref,
         );
       },
     );
   }
 
-  void refresh() {
-  }
+  void refresh() {}
 
   Container itemCard(BuildContext context, Accounts accounts, String initials,
       List<Product?> filteredProducts, WidgetRef ref) {
@@ -208,8 +225,8 @@ class HomeScreen extends ConsumerWidget {
               ),
               IconButton(
                 icon: const Icon(Icons.import_export),
-                onPressed: () => _importProductForm(
-                    accounts, ref.context), // Use a closure to pass the function reference
+                onPressed: () => _importProductForm(accounts,
+                    ref.context), // Use a closure to pass the function reference
                 padding: const EdgeInsets.all(8.0),
               ),
               IconButton(
@@ -230,13 +247,14 @@ class HomeScreen extends ConsumerWidget {
               ),
             ],
           ),
-          SizedBox(     // i have to work in row line numer 233 at home_screen
+          SizedBox(
             height: filteredProducts.isNotEmpty ? 110 : 0,
             child: ListView.builder(
               scrollDirection: Axis.horizontal,
               itemCount: filteredProducts.length,
               itemBuilder: (context, index) {
                 final product = filteredProducts[index];
+
                 return productTile(product, accounts, ref, () {
                   // setState(() {});
                 });
@@ -248,14 +266,14 @@ class HomeScreen extends ConsumerWidget {
     );
   }
 
-  _showEditProductForm(BuildContext context, Product product,
-      Accounts accounts, WidgetRef ref, Function() refreshCallback) {
+  _showEditProductForm(BuildContext context, Product product, Accounts accounts,
+      WidgetRef ref, Function() refreshCallback) {
     final TextEditingController productNameController =
-    TextEditingController(text: product.name);
+        TextEditingController(text: product.name);
     final TextEditingController productDescriptionController =
-    TextEditingController(text: product.description);
+        TextEditingController(text: product.description);
     final TextEditingController productPriceController =
-    TextEditingController(text: product.price.toString());
+        TextEditingController(text: product.price.toString());
 
     File? pickedImageFile;
     bool createProdShortcut = product.createShortcut;
@@ -268,7 +286,7 @@ class HomeScreen extends ConsumerWidget {
 
     Future<void> pickImage(StateSetter setState) async {
       final pickedFile =
-      await ImagePicker().pickImage(source: ImageSource.gallery);
+          await ImagePicker().pickImage(source: ImageSource.gallery);
       if (pickedFile != null) {
         // Update the state using the setState from StatefulBuilder
         setState(() {
@@ -346,14 +364,14 @@ class HomeScreen extends ConsumerWidget {
             TextField(
               controller: productDescriptionController,
               decoration:
-              const InputDecoration(hintText: 'Enter product description'),
+                  const InputDecoration(hintText: 'Enter product description'),
               maxLines: 3,
             ),
             const SizedBox(height: 8.0),
             TextField(
               controller: productPriceController,
               decoration:
-              const InputDecoration(hintText: 'Enter product price'),
+                  const InputDecoration(hintText: 'Enter product price'),
               keyboardType: TextInputType.number,
             ),
             const SizedBox(height: 8.0),
@@ -361,25 +379,25 @@ class HomeScreen extends ConsumerWidget {
               onTap: () => pickImage(setState),
               child: pickedImageFile != null
                   ? Image.file(
-                pickedImageFile!,
-                height: 150,
-                width: 150,
-                fit: BoxFit.cover,
-              )
+                      pickedImageFile!,
+                      height: 150,
+                      width: 150,
+                      fit: BoxFit.cover,
+                    )
                   : product.imageUrl.isNotEmpty
-                  ? Image.file(
-                File(product.imageUrl),
-                height: 150,
-                width: 150,
-                fit: BoxFit.cover,
-              )
-                  : Container(
-                height: 50,
-                width: 50,
-                color: Colors.grey[300],
-                child: const Icon(Icons.add_a_photo,
-                    color: Colors.white),
-              ),
+                      ? Image.file(
+                          File(product.imageUrl),
+                          height: 150,
+                          width: 150,
+                          fit: BoxFit.cover,
+                        )
+                      : Container(
+                          height: 50,
+                          width: 50,
+                          color: Colors.grey[300],
+                          child: const Icon(Icons.add_a_photo,
+                              color: Colors.white),
+                        ),
             ),
             const SizedBox(height: 16.0),
             Row(
@@ -513,15 +531,15 @@ class HomeScreen extends ConsumerWidget {
   void _showAddProductForm(BuildContext context, Accounts accounts, ref) {
     final TextEditingController productNameController = TextEditingController();
     final TextEditingController productDescriptionController =
-    TextEditingController();
+        TextEditingController();
     final TextEditingController productPriceController =
-    TextEditingController();
+        TextEditingController();
 
     File? pickedImageFile;
 
     Future<void> pickImage(StateSetter setState) async {
       final pickedFile =
-      await ImagePicker().pickImage(source: ImageSource.gallery);
+          await ImagePicker().pickImage(source: ImageSource.gallery);
       if (pickedFile != null) {
         // Use setState from StatefulBuilder to update the image
         setState(() {
@@ -552,8 +570,7 @@ class HomeScreen extends ConsumerWidget {
                       pickedImageFile,
                       accounts,
                       context,
-                      ref
-                  );
+                      ref);
                 }
               },
             );
@@ -572,8 +589,7 @@ class HomeScreen extends ConsumerWidget {
       File? pickedImageFile,
       Accounts accounts,
       BuildContext context,
-      ref
-      ) {
+      ref) {
     return AlertDialog(
       title: const Text('Add New Product'),
       content: SingleChildScrollView(
@@ -589,14 +605,14 @@ class HomeScreen extends ConsumerWidget {
             TextField(
               controller: productDescriptionController,
               decoration:
-              const InputDecoration(hintText: 'Enter product description'),
+                  const InputDecoration(hintText: 'Enter product description'),
               maxLines: 3,
             ),
             const SizedBox(height: 8.0),
             TextField(
               controller: productPriceController,
               decoration:
-              const InputDecoration(hintText: 'Enter product price'),
+                  const InputDecoration(hintText: 'Enter product price'),
               keyboardType: TextInputType.number,
             ),
             const SizedBox(height: 8.0),
@@ -604,17 +620,17 @@ class HomeScreen extends ConsumerWidget {
               onTap: () => pickImage(setState),
               child: pickedImageFile != null
                   ? Image.file(
-                pickedImageFile!,
-                height: 150,
-                width: 150,
-                fit: BoxFit.cover,
-              )
+                      pickedImageFile!,
+                      height: 150,
+                      width: 150,
+                      fit: BoxFit.cover,
+                    )
                   : Container(
-                height: 50,
-                width: 50,
-                color: Colors.grey[300],
-                child: const Icon(Icons.add_a_photo, color: Colors.white),
-              ),
+                      height: 50,
+                      width: 50,
+                      color: Colors.grey[300],
+                      child: const Icon(Icons.add_a_photo, color: Colors.white),
+                    ),
             ),
           ],
         ),
@@ -631,7 +647,7 @@ class HomeScreen extends ConsumerWidget {
               // Generate a unique ID by using the next available integer key
               final productBox = Hive.box<Product>('products');
               final int newProductId =
-              productBox.isEmpty ? 0 : productBox.keys.cast<int>().last + 1;
+                  productBox.isEmpty ? 0 : productBox.keys.cast<int>().last + 1;
 
               // Create the new product
               final newProduct = Product(
@@ -644,7 +660,8 @@ class HomeScreen extends ConsumerWidget {
               );
 
               // Save the product to the Hive box
-              ref.read(productProvider.notifier).addProduct(newProduct); // Use the provider to add the product
+              ref.read(productProvider.notifier).addProduct(
+                  newProduct); // Use the provider to add the product
               accounts.productIds.add(newProductId);
               Hive.box<Accounts>('accounts').put(accounts.key, accounts);
               Navigator.of(context).pop();
@@ -663,8 +680,8 @@ class HomeScreen extends ConsumerWidget {
     );
   }
 
-  GestureDetector productTile(Product? product, Accounts accounts, ref, Function() refreshCallback) {
-    print(product);
+  GestureDetector productTile(
+      Product? product, Accounts accounts, ref, Function() refreshCallback) {
     return GestureDetector(
       onTap: () {
         if (product != null) {
@@ -744,11 +761,11 @@ class HomeScreen extends ConsumerWidget {
                       child: product.imageUrl.startsWith('http')
                           ? SizedBox()
                           : Image.file(
-                        File(product.imageUrl),
-                        height: 100,
-                        width: 100,
-                        fit: BoxFit.cover,
-                      ),
+                              File(product.imageUrl),
+                              height: 100,
+                              width: 100,
+                              fit: BoxFit.cover,
+                            ),
                     )
                   else
                     const Icon(Icons.category, color: Colors.grey, size: 100),
@@ -777,7 +794,6 @@ class HomeScreen extends ConsumerWidget {
       ),
     );
   }
-
 
   FloatingActionButton _buildFloatingActionButton(WidgetRef ref) {
     return FloatingActionButton(
@@ -808,11 +824,16 @@ class HomeScreen extends ConsumerWidget {
 
   void _showForm({Accounts? accounts, required WidgetRef ref}) {
     if (accounts != null) {
-      ref.read(formDataProvider.notifier).updateMerchantName(accounts.merchantName);
+      ref
+          .read(formDataProvider.notifier)
+          .updateMerchantName(accounts.merchantName);
       ref.read(formDataProvider.notifier).updateUpiId(accounts.upiId);
       ref.read(formDataProvider.notifier).updateCurrency(accounts.currency);
-      ref.read(formDataProvider.notifier).updateSelectedColor(Color(accounts.color)); // Convert int to Color
-      if (accounts.createShortcut != ref.watch(formDataProvider).createShortcut) {
+      ref
+          .read(formDataProvider.notifier)
+          .updateSelectedColor(Color(accounts.color)); // Convert int to Color
+      if (accounts.createShortcut !=
+          ref.watch(formDataProvider).createShortcut) {
         ref.read(formDataProvider.notifier).toggleCreateShortcut();
       }
     } else {
@@ -822,7 +843,8 @@ class HomeScreen extends ConsumerWidget {
     final bool isArchived = accounts?.archived ?? false;
     final DateTime? archiveDate = accounts?.archiveDate;
     final bool isDeletable = !isArchived ||
-        (archiveDate != null && DateTime.now().difference(archiveDate).inDays >= 30);
+        (archiveDate != null &&
+            DateTime.now().difference(archiveDate).inDays >= 30);
 
     showDialog(
       context: ref.context,
@@ -845,6 +867,73 @@ class HomeScreen extends ConsumerWidget {
     );
   }
 
+  Future<Map<String, String?>?> _scanQRCode(BuildContext context) async {
+    final qrKey = GlobalKey(debugLabel: 'QR'); // Key for QR scanner
+    final Completer<String?> qrCompleter = Completer();
+
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text("Scan QR Code"),
+        content: SizedBox(
+          width: 300,
+          height: 300,
+          child: QRView(
+            key: qrKey,
+            onQRViewCreated: (QRViewController controller) {
+              controller.scannedDataStream.listen((scanData) {
+                if (!qrCompleter.isCompleted) {
+                  qrCompleter.complete(scanData.code);
+                  Navigator.of(context).pop(); // Close scanner dialog
+                }
+              });
+            },
+          ),
+        ),
+      ),
+    );
+
+    String? qrData = await qrCompleter.future;
+
+    if (qrData != null) {
+      Uri uri = Uri.parse(qrData);
+      String? upiId = uri.queryParameters["pa"];
+      String? merchantName = uri.queryParameters["pn"];
+
+      return {"upiId": upiId, "merchantName": merchantName};
+    }
+
+    return null;
+  }
+
+  Future<Map<String, String?>?> _pickQRCodeImage() async {
+    final picker = ImagePicker();
+    final pickedFile = await picker.pickImage(source: ImageSource.gallery);
+
+    if (pickedFile == null) return null;
+
+    File imageFile = File(pickedFile.path);
+
+    // Extract QR Code data from image
+    String? qrData = await _extractQRCode(imageFile);
+
+    if (qrData != null) {
+      Uri uri = Uri.parse(qrData);
+      String? upiId = uri.queryParameters["pa"];
+      String? merchantName = uri.queryParameters["pn"];
+
+      return {"upiId": upiId, "merchantName": merchantName};
+    }
+
+    return null;
+  }
+
+// Replace this with an actual QR code decoding implementation
+  Future<String?> _extractQRCode(File imageFile) async {
+    // Use a QR Code scanner package like 'google_ml_kit' or 'qr_code_dart'
+    return "upi://pay?pa=test@upi&pn=Test Merchant"; // Simulated UPI QR Data
+  }
+
   Consumer dialog(Accounts? accounts, bool isDeletable, WidgetRef ref) {
     // Declare controllers outside the rebuild logic to make them persistent
     final archivedNotifier = StateProvider<bool>((ref) => false);
@@ -857,14 +946,7 @@ class HomeScreen extends ConsumerWidget {
 
         // Synchronize controller text with formData
         merchantNameController.text = formData.merchantName;
-        merchantNameController.selection = TextSelection.fromPosition(
-          TextPosition(offset: merchantNameController.text.length),
-        );
-
         upiIdController.text = formData.upiId;
-        upiIdController.selection = TextSelection.fromPosition(
-          TextPosition(offset: upiIdController.text.length),
-        );
 
         return AlertDialog(
           title: Text(accounts == null ? 'Add Account' : 'Edit Account'),
@@ -875,19 +957,97 @@ class HomeScreen extends ConsumerWidget {
                 TextField(
                   controller: merchantNameController,
                   decoration: const InputDecoration(labelText: 'Merchant Name'),
-                  onChanged: (value) => ref.read(formDataProvider.notifier).updateMerchantName(value),
+                  onChanged: (value) => ref
+                      .read(formDataProvider.notifier)
+                      .updateMerchantName(value),
                 ),
                 const SizedBox(height: 16.0),
                 TextField(
                   controller: upiIdController,
                   decoration: const InputDecoration(labelText: 'UPI ID'),
-                  onChanged: (value) => ref.read(formDataProvider.notifier).updateUpiId(value),
+                  onChanged: (value) =>
+                      ref.read(formDataProvider.notifier).updateUpiId(value),
                 ),
                 const SizedBox(height: 16.0),
+
+                // QR Code Scanner & Image Picker Buttons
+                SizedBox(
+                  height: 50,
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                    children: [
+                      Expanded(
+                        child: ElevatedButton.icon(
+                          icon: const Icon(Icons.qr_code_scanner),
+                          label: const Text("Scan QR"),
+                          onPressed: () async {
+                            Map<String, String?>? qrDetails =
+                                await _scanQRCode(context);
+
+                            if (qrDetails != null) {
+                              String? upiId = qrDetails["upiId"];
+                              String? merchantName = qrDetails["merchantName"];
+
+                              if (upiId != null) {
+                                ref
+                                    .read(formDataProvider.notifier)
+                                    .updateUpiId(upiId);
+                                upiIdController.text = upiId;
+                              }
+
+                              if (merchantName != null) {
+                                ref
+                                    .read(formDataProvider.notifier)
+                                    .updateMerchantName(merchantName);
+                                merchantNameController.text =
+                                    merchantName; // Assuming you have a controller for it
+                              }
+                            }
+                          },
+                        ),
+                      ),
+                      const SizedBox(width: 8.0), // Change from height to width
+                      Expanded(
+                        child: ElevatedButton.icon(
+                          icon: const Icon(Icons.image),
+                          label: const Text("Pick QR Image"),
+                          onPressed: () async {
+                            Map<String, String?>? qrDetails =
+                                await _pickQRCodeImage();
+
+                            if (qrDetails != null) {
+                              String? upiId = qrDetails["upiId"];
+                              String? merchantName = qrDetails["merchantName"];
+
+                              if (upiId != null) {
+                                ref
+                                    .read(formDataProvider.notifier)
+                                    .updateUpiId(upiId);
+                                upiIdController.text = upiId;
+                              }
+
+                              if (merchantName != null) {
+                                ref
+                                    .read(formDataProvider.notifier)
+                                    .updateMerchantName(merchantName);
+                                merchantNameController.text =
+                                    merchantName; // Assuming you have a controller for it
+                              }
+                            }
+                          },
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+
+                const SizedBox(height: 16.0),
+
                 Row(
                   children: [
                     Expanded(
-                      child: Text('Currency:', style: Theme.of(context).textTheme.bodyMedium),
+                      child: Text('Currency:',
+                          style: Theme.of(context).textTheme.bodyMedium),
                     ),
                     DropdownButton<String>(
                       value: formData.currency,
@@ -899,7 +1059,9 @@ class HomeScreen extends ConsumerWidget {
                       }).toList(),
                       onChanged: (String? newValue) {
                         if (newValue != null) {
-                          ref.read(formDataProvider.notifier).updateCurrency(newValue);
+                          ref
+                              .read(formDataProvider.notifier)
+                              .updateCurrency(newValue);
                         }
                       },
                     ),
@@ -920,7 +1082,9 @@ class HomeScreen extends ConsumerWidget {
                               child: BlockPicker(
                                 pickerColor: formData.selectedColor,
                                 onColorChanged: (color) {
-                                  ref.read(formDataProvider.notifier).updateSelectedColor(color);
+                                  ref
+                                      .read(formDataProvider.notifier)
+                                      .updateSelectedColor(color);
                                   Navigator.of(context).pop(color);
                                 },
                               ),
@@ -928,7 +1092,9 @@ class HomeScreen extends ConsumerWidget {
                           ),
                         );
                         if (color != null) {
-                          ref.read(formDataProvider.notifier).updateSelectedColor(color);
+                          ref
+                              .read(formDataProvider.notifier)
+                              .updateSelectedColor(color);
                         }
                       },
                       child: Container(
@@ -946,7 +1112,9 @@ class HomeScreen extends ConsumerWidget {
                       value: formData.createShortcut,
                       onChanged: (value) {
                         if (value != null) {
-                          ref.read(formDataProvider.notifier).toggleCreateShortcut();
+                          ref
+                              .read(formDataProvider.notifier)
+                              .toggleCreateShortcut();
                         }
                       },
                     ),
@@ -961,9 +1129,9 @@ class HomeScreen extends ConsumerWidget {
                         value: accounts.archived || formData.toggleArchived,
                         onChanged: (value) {
                           if (value != null) {
-                            ref.read(formDataProvider.notifier).toggleArchived();
-                            // accounts.archived = value;
-                            // accounts.archiveDate = value ? DateTime.now() : null;
+                            ref
+                                .read(formDataProvider.notifier)
+                                .toggleArchived();
                           }
                         },
                       ),
@@ -992,14 +1160,15 @@ class HomeScreen extends ConsumerWidget {
                   }
                   Navigator.of(context).pop();
                 },
-                child: Text('Delete', style: TextStyle(color: isDeletable ? Colors.red : Colors.grey)),
+                child: Text('Delete',
+                    style: TextStyle(
+                        color: isDeletable ? Colors.red : Colors.grey)),
               ),
             TextButton(
               onPressed: () {
                 if (accounts == null) {
                   _addAccounts(ref);
                 } else {
-                  // Call your update function here
                   _updateAccounts(accounts, ref);
                 }
                 Navigator.of(context).pop();
@@ -1025,7 +1194,9 @@ class HomeScreen extends ConsumerWidget {
       archived: false,
       productIds: [],
     );
-    await ref.read(accountsProvider.notifier).addAccount(accounts); // Use the provider to add
+    await ref
+        .read(accountsProvider.notifier)
+        .addAccount(accounts); // Use the provider to add
     _manageQuickActions();
 
     // await accountsBox.put(id, accounts);
@@ -1044,7 +1215,7 @@ class HomeScreen extends ConsumerWidget {
     ]);
   }
 
-  Future<void> _updateAccounts(Accounts account, ref) async{
+  Future<void> _updateAccounts(Accounts account, ref) async {
     final formData = ref.watch(formDataProvider);
     account.merchantName = formData.merchantName;
     account.upiId = formData.upiId;
@@ -1078,7 +1249,7 @@ class HomeScreen extends ConsumerWidget {
 
     // Fetch quick actions for products
     final productShortcuts =
-    Hive.box<Product>('products').values.map((product) {
+        Hive.box<Product>('products').values.map((product) {
       return ShortcutItem(
         type: 'view_product_${product.id}',
         localizedTitle: 'View Product ${product.name}',
@@ -1097,7 +1268,6 @@ class HomeScreen extends ConsumerWidget {
     _manageQuickActions(); // Refresh the quick actions
     // await ref.read(accountsProvider.notifier);
   }
-
 
   void _importProductForm(Accounts accounts, context) async {
     final HttpLink httpLink = HttpLink(
@@ -1174,7 +1344,7 @@ class HomeScreen extends ConsumerWidget {
       String? selectedSubcategory;
       Set<int> selectedProductIds = {}; // Using Set<int> to store integer IDs
       Map<String, TextEditingController> priceControllers =
-      {}; // Controllers for price fields
+          {}; // Controllers for price fields
 
       // Initialize controllers with the current product prices
       for (var product in products) {
@@ -1232,9 +1402,9 @@ class HomeScreen extends ConsumerWidget {
                               },
                               child: Container(
                                 padding:
-                                const EdgeInsets.symmetric(horizontal: 8.0),
+                                    const EdgeInsets.symmetric(horizontal: 8.0),
                                 margin:
-                                const EdgeInsets.symmetric(horizontal: 4.0),
+                                    const EdgeInsets.symmetric(horizontal: 4.0),
                                 decoration: BoxDecoration(
                                   color: selectedCategory == category['id']
                                       ? Colors.blue
@@ -1279,7 +1449,7 @@ class HomeScreen extends ConsumerWidget {
                                       onTap: () {
                                         setState(() {
                                           selectedSubcategory =
-                                          subcategory['id'];
+                                              subcategory['id'];
                                         });
                                       },
                                       child: Container(
@@ -1289,18 +1459,18 @@ class HomeScreen extends ConsumerWidget {
                                             vertical: 4.0),
                                         decoration: BoxDecoration(
                                           color: selectedSubcategory ==
-                                              subcategory['id']
+                                                  subcategory['id']
                                               ? Colors.blue
                                               : Colors.grey[
-                                          200], // Background for unselected state
+                                                  200], // Background for unselected state
                                           borderRadius:
-                                          BorderRadius.circular(10.0),
+                                              BorderRadius.circular(10.0),
                                         ),
                                         child: Text(
                                           subcategory['name'],
                                           style: TextStyle(
                                             color: selectedSubcategory ==
-                                                subcategory['id']
+                                                    subcategory['id']
                                                 ? Colors.white
                                                 : Colors.black,
                                           ),
@@ -1318,7 +1488,7 @@ class HomeScreen extends ConsumerWidget {
                                   crossAxisAlignment: CrossAxisAlignment.start,
                                   children: filteredProducts.map((product) {
                                     final String productId =
-                                    product['id'].toString();
+                                        product['id'].toString();
                                     final bool isSelected = selectedProductIds
                                         .contains(productId.hashCode);
 
@@ -1343,26 +1513,26 @@ class HomeScreen extends ConsumerWidget {
                                         Expanded(
                                           child: Column(
                                             crossAxisAlignment:
-                                            CrossAxisAlignment.start,
+                                                CrossAxisAlignment.start,
                                             children: [
                                               Text(product['name']),
                                               TextFormField(
                                                 controller:
-                                                priceControllers[productId],
+                                                    priceControllers[productId],
                                                 keyboardType:
-                                                TextInputType.number,
+                                                    TextInputType.number,
                                                 decoration:
-                                                const InputDecoration(
+                                                    const InputDecoration(
                                                   labelText: 'Price',
                                                 ),
                                                 onChanged: (value) {
                                                   if (value.isNotEmpty) {
                                                     // If the new value is not numeric, revert to the previous valid value
                                                     double? parsedValue =
-                                                    double.tryParse(value);
+                                                        double.tryParse(value);
                                                     if (parsedValue == null) {
                                                       ScaffoldMessenger.of(
-                                                          context)
+                                                              context)
                                                           .showSnackBar(
                                                         const SnackBar(
                                                           content: Text(
@@ -1371,7 +1541,7 @@ class HomeScreen extends ConsumerWidget {
                                                       );
                                                       // Revert to the previous value
                                                       priceControllers[
-                                                      productId]!
+                                                              productId]!
                                                           .text = value;
                                                     }
                                                   }
@@ -1409,7 +1579,7 @@ class HomeScreen extends ConsumerWidget {
                   final productBox = Hive.box<Product>('products');
                   for (var productId in selectedProductIds) {
                     final originalProductData = products.firstWhere((product) =>
-                    product['id'].toString().hashCode == productId);
+                        product['id'].toString().hashCode == productId);
 
                     final productKey = originalProductData['id'].toString();
                     final priceController = priceControllers[productKey];
@@ -1457,5 +1627,5 @@ class HomeScreen extends ConsumerWidget {
       }
     }
   }
-
 }
+
