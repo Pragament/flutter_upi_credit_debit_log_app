@@ -112,6 +112,7 @@ dependencies:
   dynamic_color: ^1.6.6
   win32: ^5.9.0
   qr_code_scanner_plus: ^2.0.10+1
+  google_mlkit_text_recognition: ^0.15.0
 #  qr_code_scanner:
 
 

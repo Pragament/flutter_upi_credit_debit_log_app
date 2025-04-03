@@ -49,6 +49,7 @@ app.*.map.json
 /android/app/profile
 /android/app/release
 /android/.idea/
+/android/app/.cxx
 
 # Generated files
 *.g.dart
