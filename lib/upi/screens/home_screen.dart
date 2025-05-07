@@ -1,6 +1,8 @@
+import 'dart:convert';
 import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:http/http.dart' as http;
 import 'package:flutter_colorpicker/flutter_colorpicker.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_template/upi/screens/product_list_screen.dart';
@@ -1270,45 +1272,6 @@ class HomeScreen extends ConsumerWidget {
   }
 
   void _importProductForm(Accounts accounts, context) async {
-    final HttpLink httpLink = HttpLink(
-      'https://dev-api-ecommerce-aggregator-drt457567g.pragament.com/graphql',
-    );
-
-    final GraphQLClient client = GraphQLClient(
-      cache: GraphQLCache(),
-      link: httpLink,
-    );
-
-    const String query = r'''
-  query GetAllData {
-    getAllProducts {
-      id
-      name
-      url
-      price
-      subcategory {
-        id
-        name
-        category {
-          id
-          name
-        }
-      }
-    }
-    getAllCategories {
-      id
-      name
-    }
-    getAllSubcategories {
-      id
-      name
-      category {
-        id
-      }
-    }
-  }
-  ''';
-
     showDialog(
       context: context,
       barrierDismissible: false,
@@ -1327,38 +1290,32 @@ class HomeScreen extends ConsumerWidget {
     );
 
     try {
-      final QueryOptions options = QueryOptions(
-        document: gql(query),
-      );
+      final response = await http.get(Uri.parse('https://staticapis.pragament.com/products/categorized_products.json'));
 
-      final QueryResult result = await client.query(options);
-
-      // ignore: use_build_context_synchronously
       Navigator.of(context).pop(); // Dismiss the loading dialog
 
-      final products = result.data?['getAllProducts'] ?? [];
-      final categories = result.data?['getAllCategories'] ?? [];
-      final subcategories = result.data?['getAllSubcategories'] ?? [];
+      if (response.statusCode != 200) {
+        throw Exception("Failed to fetch product data.");
+      }
+
+      final Map<String, dynamic> jsonData = jsonDecode(response.body);
+
+      final products = jsonData['getAllProducts'] ?? [];
+      final categories = jsonData['getAllCategories'] ?? [];
+      final subcategories = jsonData['getAllSubcategories'] ?? [];
 
       String? selectedCategory;
       String? selectedSubcategory;
-      Set<int> selectedProductIds = {}; // Using Set<int> to store integer IDs
-      Map<String, TextEditingController> priceControllers =
-          {}; // Controllers for price fields
+      Set<int> selectedProductIds = {};
+      Map<String, TextEditingController> priceControllers = {};
 
-      // Initialize controllers with the current product prices
       for (var product in products) {
         final productId = product['id'].toString();
-
-        // Debug log to see raw price data
-        print('Raw price for product ${product['name']}: ${product['price']}');
-
         priceControllers[productId] = TextEditingController(
           text: product['price'].toString(),
         );
       }
 
-      // ignore: use_build_context_synchronously
       showDialog(
         context: context,
         builder: (BuildContext context) {
@@ -1370,12 +1327,10 @@ class HomeScreen extends ConsumerWidget {
                   final subcategory = product['subcategory'];
                   final category = subcategory?['category'];
 
-                  if (selectedCategory != null &&
-                      category?['id'] != selectedCategory) {
+                  if (selectedCategory != null && category?['id'] != selectedCategory) {
                     return false;
                   }
-                  if (selectedSubcategory != null &&
-                      subcategory?['id'] != selectedSubcategory) {
+                  if (selectedSubcategory != null && subcategory?['id'] != selectedSubcategory) {
                     return false;
                   }
                   return true;
@@ -1387,7 +1342,7 @@ class HomeScreen extends ConsumerWidget {
                   child: Column(
                     children: [
                       SizedBox(
-                        height: 50.0, // Height for the horizontal list
+                        height: 50.0,
                         child: ListView.builder(
                           scrollDirection: Axis.horizontal,
                           itemCount: categories.length,
@@ -1401,23 +1356,17 @@ class HomeScreen extends ConsumerWidget {
                                 });
                               },
                               child: Container(
-                                padding:
-                                    const EdgeInsets.symmetric(horizontal: 8.0),
-                                margin:
-                                    const EdgeInsets.symmetric(horizontal: 4.0),
+                                padding: const EdgeInsets.symmetric(horizontal: 8.0),
+                                margin: const EdgeInsets.symmetric(horizontal: 4.0),
                                 decoration: BoxDecoration(
-                                  color: selectedCategory == category['id']
-                                      ? Colors.blue
-                                      : Colors.grey[200],
+                                  color: selectedCategory == category['id'] ? Colors.blue : Colors.grey[200],
                                   borderRadius: BorderRadius.circular(10.0),
                                 ),
                                 child: Center(
                                   child: Text(
                                     category['name'],
                                     style: TextStyle(
-                                      color: selectedCategory == category['id']
-                                          ? Colors.white
-                                          : Colors.black,
+                                      color: selectedCategory == category['id'] ? Colors.white : Colors.black,
                                     ),
                                   ),
                                 ),
@@ -1430,47 +1379,38 @@ class HomeScreen extends ConsumerWidget {
                         child: Row(
                           children: [
                             Expanded(
-                              flex: 1, // Adjust the flex to control width
+                              flex: 1,
                               child: SizedBox(
-                                height: double
-                                    .infinity, // Use double.infinity to expand fully
+                                height: double.infinity,
                                 child: ListView.builder(
                                   itemCount: subcategories.length,
                                   itemBuilder: (context, index) {
                                     final subcategory = subcategories[index];
                                     final category = subcategory['category'];
 
-                                    if (selectedCategory != null &&
-                                        category?['id'] != selectedCategory) {
+                                    if (selectedCategory != null && category?['id'] != selectedCategory) {
                                       return const SizedBox.shrink();
                                     }
 
                                     return GestureDetector(
                                       onTap: () {
                                         setState(() {
-                                          selectedSubcategory =
-                                              subcategory['id'];
+                                          selectedSubcategory = subcategory['id'];
                                         });
                                       },
                                       child: Container(
-                                        padding: const EdgeInsets.symmetric(
-                                            vertical: 8.0, horizontal: 8.0),
-                                        margin: const EdgeInsets.symmetric(
-                                            vertical: 4.0),
+                                        padding: const EdgeInsets.symmetric(vertical: 8.0, horizontal: 8.0),
+                                        margin: const EdgeInsets.symmetric(vertical: 4.0),
                                         decoration: BoxDecoration(
-                                          color: selectedSubcategory ==
-                                                  subcategory['id']
+                                          color: selectedSubcategory == subcategory['id']
                                               ? Colors.blue
-                                              : Colors.grey[
-                                                  200], // Background for unselected state
-                                          borderRadius:
-                                              BorderRadius.circular(10.0),
+                                              : Colors.grey[200],
+                                          borderRadius: BorderRadius.circular(10.0),
                                         ),
                                         child: Text(
                                           subcategory['name'],
                                           style: TextStyle(
-                                            color: selectedSubcategory ==
-                                                    subcategory['id']
+                                            color: selectedSubcategory == subcategory['id']
                                                 ? Colors.white
                                                 : Colors.black,
                                           ),
@@ -1482,15 +1422,13 @@ class HomeScreen extends ConsumerWidget {
                               ),
                             ),
                             Expanded(
-                              flex: 3, // Adjust the flex to control width
+                              flex: 3,
                               child: SingleChildScrollView(
                                 child: Column(
                                   crossAxisAlignment: CrossAxisAlignment.start,
                                   children: filteredProducts.map((product) {
-                                    final String productId =
-                                        product['id'].toString();
-                                    final bool isSelected = selectedProductIds
-                                        .contains(productId.hashCode);
+                                    final String productId = product['id'].toString();
+                                    final bool isSelected = selectedProductIds.contains(productId.hashCode);
 
                                     return Row(
                                       children: [
@@ -1498,51 +1436,35 @@ class HomeScreen extends ConsumerWidget {
                                           value: isSelected,
                                           onChanged: (bool? value) {
                                             setState(() {
-                                              final int uniqueId =
-                                                  productId.hashCode;
+                                              final int uniqueId = productId.hashCode;
                                               if (value == true) {
-                                                selectedProductIds
-                                                    .add(uniqueId);
+                                                selectedProductIds.add(uniqueId);
                                               } else {
-                                                selectedProductIds
-                                                    .remove(uniqueId);
+                                                selectedProductIds.remove(uniqueId);
                                               }
                                             });
                                           },
                                         ),
                                         Expanded(
                                           child: Column(
-                                            crossAxisAlignment:
-                                                CrossAxisAlignment.start,
+                                            crossAxisAlignment: CrossAxisAlignment.start,
                                             children: [
                                               Text(product['name']),
                                               TextFormField(
-                                                controller:
-                                                    priceControllers[productId],
-                                                keyboardType:
-                                                    TextInputType.number,
-                                                decoration:
-                                                    const InputDecoration(
+                                                controller: priceControllers[productId],
+                                                keyboardType: TextInputType.number,
+                                                decoration: const InputDecoration(
                                                   labelText: 'Price',
                                                 ),
                                                 onChanged: (value) {
                                                   if (value.isNotEmpty) {
-                                                    // If the new value is not numeric, revert to the previous valid value
-                                                    double? parsedValue =
-                                                        double.tryParse(value);
+                                                    double? parsedValue = double.tryParse(value);
                                                     if (parsedValue == null) {
-                                                      ScaffoldMessenger.of(
-                                                              context)
-                                                          .showSnackBar(
+                                                      ScaffoldMessenger.of(context).showSnackBar(
                                                         const SnackBar(
-                                                          content: Text(
-                                                              'Please enter a valid numeric price.'),
+                                                          content: Text('Please enter a valid numeric price.'),
                                                         ),
                                                       );
-                                                      // Revert to the previous value
-                                                      priceControllers[
-                                                              productId]!
-                                                          .text = value;
                                                     }
                                                   }
                                                 },
@@ -1578,30 +1500,23 @@ class HomeScreen extends ConsumerWidget {
 
                   final productBox = Hive.box<Product>('products');
                   for (var productId in selectedProductIds) {
-                    final originalProductData = products.firstWhere((product) =>
-                        product['id'].toString().hashCode == productId);
+                    final originalProductData = products.firstWhere(
+                      (product) => product['id'].toString().hashCode == productId,
+                    );
 
                     final productKey = originalProductData['id'].toString();
                     final priceController = priceControllers[productKey];
-                    if (priceController == null) {
-                      print(
-                          "No price controller found for product $productKey");
-                      continue; // Skip this product if no controller is found
-                    }
+                    if (priceController == null) continue;
 
                     final priceText = priceController.text;
                     final double? price = double.tryParse(priceText);
 
-                    if (price == null || price <= 0) {
-                      print(
-                          "Invalid price for product ${originalProductData['name']} ($priceText)");
-                      continue; // Skip this product if price is invalid
-                    }
+                    if (price == null || price <= 0) continue;
 
                     final newProduct = Product(
                       id: productId,
                       name: originalProductData['name'],
-                      price: price, // Save the parsed price
+                      price: price,
                       description: '',
                       imageUrl: '',
                     );
@@ -1611,7 +1526,6 @@ class HomeScreen extends ConsumerWidget {
 
                   accounts.productIds.addAll(selectedProductIds);
                   Hive.box<Accounts>('accounts').put(accounts.key, accounts);
-                  // setState(() {});
                 },
               ),
             ],
@@ -1619,13 +1533,12 @@ class HomeScreen extends ConsumerWidget {
         },
       );
     } catch (e) {
-      // ignore: use_build_context_synchronously
-      Navigator.of(context)
-          .pop(); // Dismiss the loading dialog if there's an error
+      Navigator.of(context).pop();
       if (kDebugMode) {
         print("Error: $e");
       }
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Error loading products: $e')),
+      );
     }
   }
-}
-
