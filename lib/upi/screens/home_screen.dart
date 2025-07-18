@@ -44,7 +44,7 @@ class HomeScreen extends ConsumerWidget {
       appBar: customAppBar(ref, searchController),
       floatingActionButton: _buildFloatingActionButton(ref),
       body: accountsList.isEmpty
-          ? Center(child: Text('No accounts available'))
+          ? const Center(child: Text('No accounts available'))
           : customBody(ref, accountsList, productsList),
     );
   }
@@ -378,7 +378,7 @@ class HomeScreen extends ConsumerWidget {
               onTap: () => pickImage(setState),
               child: pickedImageFile != null
                   ? Image.file(
-                      pickedImageFile!,
+                      pickedImageFile,
                       height: 150,
                       width: 150,
                       fit: BoxFit.cover,
@@ -619,7 +619,7 @@ class HomeScreen extends ConsumerWidget {
               onTap: () => pickImage(setState),
               child: pickedImageFile != null
                   ? Image.file(
-                      pickedImageFile!,
+                      pickedImageFile,
                       height: 150,
                       width: 150,
                       fit: BoxFit.cover,
@@ -758,7 +758,12 @@ class HomeScreen extends ConsumerWidget {
                     ClipRRect(
                       borderRadius: BorderRadius.circular(8.0),
                       child: product.imageUrl.startsWith('http')
-                          ? SizedBox()
+                          ? Image.network(
+                              product.imageUrl,
+                              height: 100,
+                              width: 100,
+                              fit: BoxFit.cover,
+                            )
                           : Image.file(
                               File(product.imageUrl),
                               height: 100,
@@ -873,7 +878,7 @@ class HomeScreen extends ConsumerWidget {
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
-        title: Text("Scan QR Code"),
+        title: const Text("Scan QR Code"),
         content: SizedBox(
           width: 300,
           height: 300,
@@ -1394,8 +1399,10 @@ class HomeScreen extends ConsumerWidget {
                                 });
                               },
                               child: Container(
-                                padding: const EdgeInsets.symmetric(horizontal: 8),
-                                margin: const EdgeInsets.symmetric(horizontal: 4),
+                                padding:
+                                    const EdgeInsets.symmetric(horizontal: 8),
+                                margin:
+                                    const EdgeInsets.symmetric(horizontal: 4),
                                 decoration: BoxDecoration(
                                   color: selectedCategory == catId
                                       ? Colors.blue
@@ -1442,10 +1449,11 @@ class HomeScreen extends ConsumerWidget {
                                     child: Container(
                                       padding: const EdgeInsets.symmetric(
                                           vertical: 8, horizontal: 8),
-                                      margin: const EdgeInsets.symmetric(vertical: 4),
+                                      margin: const EdgeInsets.symmetric(
+                                          vertical: 4),
                                       decoration: BoxDecoration(
                                         color: selectedSubcategory ==
-                                            subcategory['id']
+                                                subcategory['id']
                                             ? Colors.blue
                                             : Colors.grey[200],
                                         borderRadius: BorderRadius.circular(10),
@@ -1454,7 +1462,7 @@ class HomeScreen extends ConsumerWidget {
                                         subcategory['name'],
                                         style: TextStyle(
                                           color: selectedSubcategory ==
-                                              subcategory['id']
+                                                  subcategory['id']
                                               ? Colors.white
                                               : Colors.black,
                                         ),
@@ -1483,7 +1491,8 @@ class HomeScreen extends ConsumerWidget {
                                               if (value == true) {
                                                 selectedProductIds.add(idHash);
                                               } else {
-                                                selectedProductIds.remove(idHash);
+                                                selectedProductIds
+                                                    .remove(idHash);
                                               }
                                             });
                                           },
@@ -1491,23 +1500,24 @@ class HomeScreen extends ConsumerWidget {
                                         Expanded(
                                           child: Column(
                                             crossAxisAlignment:
-                                            CrossAxisAlignment.start,
+                                                CrossAxisAlignment.start,
                                             children: [
                                               Text(product['name']),
                                               TextFormField(
                                                 controller:
-                                                priceControllers[productId],
+                                                    priceControllers[productId],
                                                 keyboardType:
-                                                TextInputType.number,
+                                                    TextInputType.number,
                                                 decoration:
-                                                const InputDecoration(
+                                                    const InputDecoration(
                                                   labelText: 'Price',
                                                 ),
                                                 onChanged: (value) {
                                                   final parsed =
-                                                  double.tryParse(value);
+                                                      double.tryParse(value);
                                                   if (parsed == null) {
-                                                    ScaffoldMessenger.of(context)
+                                                    ScaffoldMessenger.of(
+                                                            context)
                                                         .showSnackBar(
                                                       const SnackBar(
                                                         content: Text(
@@ -1547,14 +1557,14 @@ class HomeScreen extends ConsumerWidget {
                   final productBox = Hive.box<Product>('products');
                   for (var productId in selectedProductIds) {
                     final matchedProduct = products.firstWhere((product) =>
-                    product['id'].toString().hashCode == productId);
+                        product['id'].toString().hashCode == productId);
 
                     final key = matchedProduct['id'].toString();
                     final controller = priceControllers[key];
                     final price = double.tryParse(controller?.text ?? '');
 
                     if (price == null || price <= 0) {
-                      print("Invalid price for product ${matchedProduct['name']}");
+                      log("Invalid price for product ${matchedProduct['name']}");
                       continue;
                     }
 
@@ -1563,9 +1573,11 @@ class HomeScreen extends ConsumerWidget {
                       name: matchedProduct['name'],
                       price: price,
                       description: matchedProduct['description'] ?? '',
-                      imageUrl: matchedProduct['imageUrl'] ?? '',
+                      imageUrl: matchedProduct['imageUrl'] != null
+                          ? 'https://staticapis.pragament.com/${matchedProduct['imageUrl']}'
+                          : '',
                     );
-                    log(newProduct.name);
+                    log(newProduct.imageUrl);
 
                     productBox.put(productId, newProduct);
                   }
@@ -1584,4 +1596,3 @@ class HomeScreen extends ConsumerWidget {
     }
   }
 }
-
