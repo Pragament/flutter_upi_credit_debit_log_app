@@ -378,7 +378,7 @@ class HomeScreen extends ConsumerWidget {
               onTap: () => pickImage(setState),
               child: pickedImageFile != null
                   ? Image.file(
-                      pickedImageFile!,
+                      pickedImageFile,
                       height: 150,
                       width: 150,
                       fit: BoxFit.cover,
@@ -619,7 +619,7 @@ class HomeScreen extends ConsumerWidget {
               onTap: () => pickImage(setState),
               child: pickedImageFile != null
                   ? Image.file(
-                      pickedImageFile!,
+                      pickedImageFile,
                       height: 150,
                       width: 150,
                       fit: BoxFit.cover,
@@ -758,9 +758,14 @@ class HomeScreen extends ConsumerWidget {
                     ClipRRect(
                       borderRadius: BorderRadius.circular(8.0),
                       child: product.imageUrl.startsWith('http')
-                          ? const SizedBox()
-                          : Image.network(
-                              'https://staticapis.pragament.com/${product.imageUrl}',
+                          ? Image.network(
+                              product.imageUrl,
+                              height: 100,
+                              width: 100,
+                              fit: BoxFit.cover,
+                            )
+                          : Image.file(
+                              File(product.imageUrl),
                               height: 100,
                               width: 100,
                               fit: BoxFit.cover,
@@ -1568,8 +1573,11 @@ class HomeScreen extends ConsumerWidget {
                       name: matchedProduct['name'],
                       price: price,
                       description: matchedProduct['description'] ?? '',
-                      imageUrl: matchedProduct['imageUrl'] ?? '',
+                      imageUrl: matchedProduct['imageUrl'] != null
+                          ? 'https://staticapis.pragament.com/${matchedProduct['imageUrl']}'
+                          : '',
                     );
+                    log(newProduct.imageUrl);
 
                     productBox.put(productId, newProduct);
                   }
