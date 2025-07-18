@@ -1,13 +1,14 @@
+import 'dart:convert';
+import 'dart:developer';
 import 'dart:io';
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_colorpicker/flutter_colorpicker.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_template/upi/screens/product_list_screen.dart';
 import 'package:flutter_template/upi/screens/transaction_screen.dart';
 import 'package:flutter_template/upi/screens/widgets/custom_appbar.dart';
-import 'package:graphql_flutter/graphql_flutter.dart';
 import 'package:hive/hive.dart';
+import 'package:http/http.dart' as http;
 import 'package:image_picker/image_picker.dart';
 import 'package:local_auth/local_auth.dart';
 import 'package:quick_actions/quick_actions.dart';
@@ -21,9 +22,7 @@ import '../provider/riverpod_provider.dart';
 import '../utils/utils.dart';
 import 'create_order_screen.dart';
 
-import 'dart:async'; // ✅ For Completer
-import 'dart:io'; // ✅ For File operations
-import 'package:image_picker/image_picker.dart'; // ✅ For Image Picker
+import 'dart:async';
 
 import 'package:qr_code_scanner_plus/qr_code_scanner_plus.dart';
 
@@ -1269,45 +1268,10 @@ class HomeScreen extends ConsumerWidget {
     // await ref.read(accountsProvider.notifier);
   }
 
-  void _importProductForm(Accounts accounts, context) async {
-    final HttpLink httpLink = HttpLink(
-      'https://dev-api-ecommerce-aggregator-drt457567g.pragament.com/graphql',
+  void _importProductForm(Accounts accounts, BuildContext context) async {
+    final Uri url = Uri.parse(
+      'https://staticapis.pragament.com/products/categorized_products.json',
     );
-
-    final GraphQLClient client = GraphQLClient(
-      cache: GraphQLCache(),
-      link: httpLink,
-    );
-
-    const String query = r'''
-  query GetAllData {
-    getAllProducts {
-      id
-      name
-      url
-      price
-      subcategory {
-        id
-        name
-        category {
-          id
-          name
-        }
-      }
-    }
-    getAllCategories {
-      id
-      name
-    }
-    getAllSubcategories {
-      id
-      name
-      category {
-        id
-      }
-    }
-  }
-  ''';
 
     showDialog(
       context: context,
@@ -1327,38 +1291,67 @@ class HomeScreen extends ConsumerWidget {
     );
 
     try {
-      final QueryOptions options = QueryOptions(
-        document: gql(query),
-      );
+      final response = await http.get(url);
+      Navigator.of(context).pop(); // Close loading dialog
 
-      final QueryResult result = await client.query(options);
+      if (response.statusCode != 200) {
+        throw Exception("Failed to load data: ${response.statusCode}");
+      }
 
-      // ignore: use_build_context_synchronously
-      Navigator.of(context).pop(); // Dismiss the loading dialog
+      final Map<String, dynamic> data = jsonDecode(response.body);
+      final List categories = data['categories'];
+      List subcategories = [];
+      List products = [];
 
-      final products = result.data?['getAllProducts'] ?? [];
-      final categories = result.data?['getAllCategories'] ?? [];
-      final subcategories = result.data?['getAllSubcategories'] ?? [];
+      for (var category in categories) {
+        final categoryId = category['category_id'];
+        final categoryName = category['category'];
+        final List subcats = category['subcategories'] ?? [];
+
+        for (var subcategory in subcats) {
+          final subcategoryId = subcategory['subcategory_id'];
+          final subcategoryName = subcategory['subcategory'];
+          final List prods = subcategory['products'] ?? [];
+
+          subcategories.add({
+            'id': subcategoryId,
+            'name': subcategoryName,
+            'category': {'id': categoryId}
+          });
+
+          for (var product in prods) {
+            products.add({
+              'id': product['product_id'],
+              'name': product['product_name'],
+              'price': double.tryParse(product['price'].toString()) ?? 0,
+              'description': product['description'] ?? '',
+              'imageUrl': product['image_url'] ?? '',
+              'measurement': product['measurement'] ?? {},
+              'subcategory': {
+                'id': subcategoryId,
+                'name': subcategoryName,
+                'category': {
+                  'id': categoryId,
+                  'name': categoryName,
+                }
+              }
+            });
+          }
+        }
+      }
 
       String? selectedCategory;
       String? selectedSubcategory;
-      Set<int> selectedProductIds = {}; // Using Set<int> to store integer IDs
-      Map<String, TextEditingController> priceControllers =
-          {}; // Controllers for price fields
+      Set<int> selectedProductIds = {};
+      Map<String, TextEditingController> priceControllers = {};
 
-      // Initialize controllers with the current product prices
       for (var product in products) {
         final productId = product['id'].toString();
-
-        // Debug log to see raw price data
-        print('Raw price for product ${product['name']}: ${product['price']}');
-
         priceControllers[productId] = TextEditingController(
           text: product['price'].toString(),
         );
       }
 
-      // ignore: use_build_context_synchronously
       showDialog(
         context: context,
         builder: (BuildContext context) {
@@ -1369,7 +1362,6 @@ class HomeScreen extends ConsumerWidget {
                 List filteredProducts = products.where((product) {
                   final subcategory = product['subcategory'];
                   final category = subcategory?['category'];
-
                   if (selectedCategory != null &&
                       category?['id'] != selectedCategory) {
                     return false;
@@ -1387,35 +1379,34 @@ class HomeScreen extends ConsumerWidget {
                   child: Column(
                     children: [
                       SizedBox(
-                        height: 50.0, // Height for the horizontal list
+                        height: 50.0,
                         child: ListView.builder(
                           scrollDirection: Axis.horizontal,
                           itemCount: categories.length,
                           itemBuilder: (context, index) {
                             final category = categories[index];
+                            final catId = category['category_id'];
                             return GestureDetector(
                               onTap: () {
                                 setState(() {
-                                  selectedCategory = category['id'];
+                                  selectedCategory = catId;
                                   selectedSubcategory = null;
                                 });
                               },
                               child: Container(
-                                padding:
-                                    const EdgeInsets.symmetric(horizontal: 8.0),
-                                margin:
-                                    const EdgeInsets.symmetric(horizontal: 4.0),
+                                padding: const EdgeInsets.symmetric(horizontal: 8),
+                                margin: const EdgeInsets.symmetric(horizontal: 4),
                                 decoration: BoxDecoration(
-                                  color: selectedCategory == category['id']
+                                  color: selectedCategory == catId
                                       ? Colors.blue
                                       : Colors.grey[200],
-                                  borderRadius: BorderRadius.circular(10.0),
+                                  borderRadius: BorderRadius.circular(10),
                                 ),
                                 child: Center(
                                   child: Text(
-                                    category['name'],
+                                    category['category'],
                                     style: TextStyle(
-                                      color: selectedCategory == category['id']
+                                      color: selectedCategory == catId
                                           ? Colors.white
                                           : Colors.black,
                                     ),
@@ -1430,66 +1421,56 @@ class HomeScreen extends ConsumerWidget {
                         child: Row(
                           children: [
                             Expanded(
-                              flex: 1, // Adjust the flex to control width
-                              child: SizedBox(
-                                height: double
-                                    .infinity, // Use double.infinity to expand fully
-                                child: ListView.builder(
-                                  itemCount: subcategories.length,
-                                  itemBuilder: (context, index) {
-                                    final subcategory = subcategories[index];
-                                    final category = subcategory['category'];
+                              flex: 1,
+                              child: ListView.builder(
+                                itemCount: subcategories.length,
+                                itemBuilder: (context, index) {
+                                  final subcategory = subcategories[index];
+                                  final category = subcategory['category'];
 
-                                    if (selectedCategory != null &&
-                                        category?['id'] != selectedCategory) {
-                                      return const SizedBox.shrink();
-                                    }
+                                  if (selectedCategory != null &&
+                                      category?['id'] != selectedCategory) {
+                                    return const SizedBox.shrink();
+                                  }
 
-                                    return GestureDetector(
-                                      onTap: () {
-                                        setState(() {
-                                          selectedSubcategory =
-                                              subcategory['id'];
-                                        });
-                                      },
-                                      child: Container(
-                                        padding: const EdgeInsets.symmetric(
-                                            vertical: 8.0, horizontal: 8.0),
-                                        margin: const EdgeInsets.symmetric(
-                                            vertical: 4.0),
-                                        decoration: BoxDecoration(
+                                  return GestureDetector(
+                                    onTap: () {
+                                      setState(() {
+                                        selectedSubcategory = subcategory['id'];
+                                      });
+                                    },
+                                    child: Container(
+                                      padding: const EdgeInsets.symmetric(
+                                          vertical: 8, horizontal: 8),
+                                      margin: const EdgeInsets.symmetric(vertical: 4),
+                                      decoration: BoxDecoration(
+                                        color: selectedSubcategory ==
+                                            subcategory['id']
+                                            ? Colors.blue
+                                            : Colors.grey[200],
+                                        borderRadius: BorderRadius.circular(10),
+                                      ),
+                                      child: Text(
+                                        subcategory['name'],
+                                        style: TextStyle(
                                           color: selectedSubcategory ==
-                                                  subcategory['id']
-                                              ? Colors.blue
-                                              : Colors.grey[
-                                                  200], // Background for unselected state
-                                          borderRadius:
-                                              BorderRadius.circular(10.0),
-                                        ),
-                                        child: Text(
-                                          subcategory['name'],
-                                          style: TextStyle(
-                                            color: selectedSubcategory ==
-                                                    subcategory['id']
-                                                ? Colors.white
-                                                : Colors.black,
-                                          ),
+                                              subcategory['id']
+                                              ? Colors.white
+                                              : Colors.black,
                                         ),
                                       ),
-                                    );
-                                  },
-                                ),
+                                    ),
+                                  );
+                                },
                               ),
                             ),
                             Expanded(
-                              flex: 3, // Adjust the flex to control width
+                              flex: 3,
                               child: SingleChildScrollView(
                                 child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
                                   children: filteredProducts.map((product) {
-                                    final String productId =
-                                        product['id'].toString();
-                                    final bool isSelected = selectedProductIds
+                                    final productId = product['id'].toString();
+                                    final isSelected = selectedProductIds
                                         .contains(productId.hashCode);
 
                                     return Row(
@@ -1498,14 +1479,11 @@ class HomeScreen extends ConsumerWidget {
                                           value: isSelected,
                                           onChanged: (bool? value) {
                                             setState(() {
-                                              final int uniqueId =
-                                                  productId.hashCode;
+                                              final idHash = productId.hashCode;
                                               if (value == true) {
-                                                selectedProductIds
-                                                    .add(uniqueId);
+                                                selectedProductIds.add(idHash);
                                               } else {
-                                                selectedProductIds
-                                                    .remove(uniqueId);
+                                                selectedProductIds.remove(idHash);
                                               }
                                             });
                                           },
@@ -1513,37 +1491,29 @@ class HomeScreen extends ConsumerWidget {
                                         Expanded(
                                           child: Column(
                                             crossAxisAlignment:
-                                                CrossAxisAlignment.start,
+                                            CrossAxisAlignment.start,
                                             children: [
                                               Text(product['name']),
                                               TextFormField(
                                                 controller:
-                                                    priceControllers[productId],
+                                                priceControllers[productId],
                                                 keyboardType:
-                                                    TextInputType.number,
+                                                TextInputType.number,
                                                 decoration:
-                                                    const InputDecoration(
+                                                const InputDecoration(
                                                   labelText: 'Price',
                                                 ),
                                                 onChanged: (value) {
-                                                  if (value.isNotEmpty) {
-                                                    // If the new value is not numeric, revert to the previous valid value
-                                                    double? parsedValue =
-                                                        double.tryParse(value);
-                                                    if (parsedValue == null) {
-                                                      ScaffoldMessenger.of(
-                                                              context)
-                                                          .showSnackBar(
-                                                        const SnackBar(
-                                                          content: Text(
-                                                              'Please enter a valid numeric price.'),
-                                                        ),
-                                                      );
-                                                      // Revert to the previous value
-                                                      priceControllers[
-                                                              productId]!
-                                                          .text = value;
-                                                    }
+                                                  final parsed =
+                                                  double.tryParse(value);
+                                                  if (parsed == null) {
+                                                    ScaffoldMessenger.of(context)
+                                                        .showSnackBar(
+                                                      const SnackBar(
+                                                        content: Text(
+                                                            'Please enter a valid numeric price.'),
+                                                      ),
+                                                    );
                                                   }
                                                 },
                                               ),
@@ -1564,12 +1534,10 @@ class HomeScreen extends ConsumerWidget {
                 );
               },
             ),
-            actions: <Widget>[
+            actions: [
               TextButton(
                 child: const Text('Cancel'),
-                onPressed: () {
-                  Navigator.of(context).pop();
-                },
+                onPressed: () => Navigator.of(context).pop(),
               ),
               TextButton(
                 child: const Text('Import'),
@@ -1578,40 +1546,32 @@ class HomeScreen extends ConsumerWidget {
 
                   final productBox = Hive.box<Product>('products');
                   for (var productId in selectedProductIds) {
-                    final originalProductData = products.firstWhere((product) =>
-                        product['id'].toString().hashCode == productId);
+                    final matchedProduct = products.firstWhere((product) =>
+                    product['id'].toString().hashCode == productId);
 
-                    final productKey = originalProductData['id'].toString();
-                    final priceController = priceControllers[productKey];
-                    if (priceController == null) {
-                      print(
-                          "No price controller found for product $productKey");
-                      continue; // Skip this product if no controller is found
-                    }
-
-                    final priceText = priceController.text;
-                    final double? price = double.tryParse(priceText);
+                    final key = matchedProduct['id'].toString();
+                    final controller = priceControllers[key];
+                    final price = double.tryParse(controller?.text ?? '');
 
                     if (price == null || price <= 0) {
-                      print(
-                          "Invalid price for product ${originalProductData['name']} ($priceText)");
-                      continue; // Skip this product if price is invalid
+                      print("Invalid price for product ${matchedProduct['name']}");
+                      continue;
                     }
 
                     final newProduct = Product(
                       id: productId,
-                      name: originalProductData['name'],
-                      price: price, // Save the parsed price
-                      description: '',
-                      imageUrl: '',
+                      name: matchedProduct['name'],
+                      price: price,
+                      description: matchedProduct['description'] ?? '',
+                      imageUrl: matchedProduct['imageUrl'] ?? '',
                     );
+                    log(newProduct.name);
 
                     productBox.put(productId, newProduct);
                   }
 
                   accounts.productIds.addAll(selectedProductIds);
                   Hive.box<Accounts>('accounts').put(accounts.key, accounts);
-                  // setState(() {});
                 },
               ),
             ],
@@ -1619,12 +1579,8 @@ class HomeScreen extends ConsumerWidget {
         },
       );
     } catch (e) {
-      // ignore: use_build_context_synchronously
-      Navigator.of(context)
-          .pop(); // Dismiss the loading dialog if there's an error
-      if (kDebugMode) {
-        print("Error: $e");
-      }
+      Navigator.of(context).pop();
+      print("Error fetching or processing data: $e");
     }
   }
 }
