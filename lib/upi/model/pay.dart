@@ -1,5 +1,5 @@
 import 'package:hive/hive.dart';
-// For getting application documents directory
+import '../../tag/tag_model.dart'; // <--- Placeholder: Ensure this path is correct.
 
 part 'pay.g.dart';
 
@@ -74,10 +74,13 @@ class Accounts extends HiveObject {
 
   @HiveField(7)
   DateTime?
-  archiveDate; // New field to store the date when the account was archived
+      archiveDate; // New field to store the date when the account was archived
 
   @HiveField(8)
   late List<int> productIds; // List of product IDs
+
+  @HiveField(9) // <--- NEW HIVE FIELD ADDED
+  late List<Tag> tags; // <--- NEW TAGS FIELD ADDED
 
   Accounts({
     required this.id,
@@ -89,6 +92,7 @@ class Accounts extends HiveObject {
     this.archived = false,
     this.archiveDate,
     required this.productIds,
+    required this.tags, // <--- NEW TAGS PARAMETER ADDED
   });
 }
 
@@ -118,6 +122,9 @@ class Product extends HiveObject {
   @HiveField(7)
   bool createShortcut = false; // New field
 
+  @HiveField(8)
+  late List<Tag> tags; // Tags field for products
+
   Product({
     required this.id,
     required this.name,
@@ -127,5 +134,6 @@ class Product extends HiveObject {
     this.archived = false, // Default value
     this.archiveDate,
     this.createShortcut = false, // Default value
+    required this.tags, // Required tags parameter
   });
 }

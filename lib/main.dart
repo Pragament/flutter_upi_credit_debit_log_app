@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_template/tag/tag_model.dart';
 import 'package:flutter_template/upi/model/pay.dart';
 import 'package:flutter_template/upi/provider/riverpod_provider.dart';
 import 'package:flutter_template/upi/screens/create_order_screen.dart';
@@ -10,6 +11,7 @@ import 'package:quick_actions/quick_actions.dart';
 
 import 'app.dart';
 import 'flavors/flavor_config.dart';
+
 final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
 
 void main() async {
@@ -29,14 +31,14 @@ void main() async {
   Hive.registerAdapter(OrderAdapter());
   Hive.registerAdapter(AccountsAdapter());
   Hive.registerAdapter(ProductAdapter());
+  Hive.registerAdapter(TagAdapter());
 
   await Hive.openBox<Order>('orders');
   await Hive.openBox<Accounts>('accounts');
   await Hive.openBox<Product>('products');
+  await Hive.openBox<Tag>('tags');
 
   runApp(const ProviderScope(child: MyApp()));
-
-
 }
 
 class MyApp extends ConsumerWidget {
@@ -55,7 +57,6 @@ class MyApp extends ConsumerWidget {
   }
 }
 
-
 String getEnvFileName(String flavor) {
   switch (flavor) {
     case "prod":
@@ -66,4 +67,3 @@ String getEnvFileName(String flavor) {
       return ".env.dev";
   }
 }
-

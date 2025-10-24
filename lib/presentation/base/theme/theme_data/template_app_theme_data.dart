@@ -18,7 +18,7 @@ ThemeData buildTheme(ColorScheme colorScheme) {
         useGoogleFonts ? GoogleFonts.openSansTextTheme(textTheme) : textTheme,
     fontFamily: useGoogleFonts ? GoogleFonts.openSans().fontFamily : null,
     popupMenuTheme: PopupMenuThemeData(color: colorScheme.surface),
-    cardTheme: AppCardTheme(cardColor: colorScheme.surface),
+    // cardTheme: AppCardTheme(cardColor: colorScheme.surface),
     snackBarTheme: SnackBarThemeData(backgroundColor: colorScheme.surface),
     appBarTheme: AppBarTheme(color: colorScheme.surfaceVariant),
     colorScheme: colorScheme,

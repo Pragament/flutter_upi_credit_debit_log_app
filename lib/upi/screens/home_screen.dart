@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'dart:developer';
 import 'dart:io';
+import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_colorpicker/flutter_colorpicker.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -9,10 +10,15 @@ import 'package:flutter_template/upi/screens/transaction_screen.dart';
 import 'package:flutter_template/upi/screens/widgets/custom_appbar.dart';
 import 'package:hive/hive.dart';
 import 'package:http/http.dart' as http;
+import 'package:http/http.dart' as watchRef;
 import 'package:image_picker/image_picker.dart';
 import 'package:local_auth/local_auth.dart';
 import 'package:quick_actions/quick_actions.dart';
-
+import '../../tag/home_state_provider.dart';
+import '../../tag/tag_field.dart';
+import '../../tag/tag_model.dart';
+import '../../tag/tags_selection_dialog.dart';
+import '../../tag/tags_strip.dart';
 import '../model/pay.dart';
 import '../provider/account_provider.dart';
 import '../provider/form_data.dart';
@@ -28,6 +34,8 @@ import 'package:qr_code_scanner_plus/qr_code_scanner_plus.dart';
 
 final accountsBox = Hive.box<Accounts>('accounts');
 final productBox = Hive.box<Product>('products');
+List<Tag> tags = [];
+GlobalKey AnothertagsKey = GlobalKey();
 
 class HomeScreen extends ConsumerWidget {
   final QuickActions quickActions;
@@ -37,15 +45,24 @@ class HomeScreen extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final searchController = ref.watch(searchControllerProvider);
-    final accountsList = ref.watch(accountsProvider);
-    final productsList = ref.watch(productProvider);
+    final homeState = ref.watch(homeStateNotifierProvider);
+    final accountsList = homeState.accounts;
+    final productsList = homeState.products;
 
     return Scaffold(
       appBar: customAppBar(ref, searchController),
       floatingActionButton: _buildFloatingActionButton(ref),
-      body: accountsList.isEmpty
-          ? const Center(child: Text('No accounts available'))
-          : customBody(ref, accountsList, productsList),
+      body: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          TagsStrip(),
+          Expanded(
+            child: accountsList.isEmpty
+                ? const Center(child: Text('No accounts available'))
+                : customBody(ref, accountsList, productsList),
+          ),
+        ],
+      ),
     );
   }
 
@@ -61,11 +78,17 @@ class HomeScreen extends ConsumerWidget {
       // Check if any product associated with this account matches the search query
       final productMatches = account.productIds.any((productId) {
         final product = productBox.get(productId);
-        return product != null &&
-            (product.name.toLowerCase().contains(query.toLowerCase()) ||
-                product.description
-                    .toLowerCase()
-                    .contains(query.toLowerCase()));
+        if (product == null) return false;
+
+        // Check product name, description, and tags
+        final nameMatches =
+            product.name.toLowerCase().contains(query.toLowerCase());
+        final descriptionMatches =
+            product.description.toLowerCase().contains(query.toLowerCase());
+        final tagMatches = product.tags
+            .any((tag) => tag.name.toLowerCase().contains(query.toLowerCase()));
+
+        return nameMatches || descriptionMatches || tagMatches;
       });
 
       return accountMatches || productMatches;
@@ -78,15 +101,20 @@ class HomeScreen extends ConsumerWidget {
     final showArchived = ref.watch(showArchivedProvider);
     final searchQuery = ref.watch(searchQueryProviders);
 
+    // Use the filtered data from homeStateNotifierProvider (which includes tag filtering)
+    final homeState = ref.watch(homeStateNotifierProvider);
+    final filteredAccountsList = homeState.accounts;
+    final filteredProductsList = homeState.products;
+
     // Fetch and filter accounts
-    accountsList.sort((a, b) {
+    filteredAccountsList.sort((a, b) {
       int compareResult =
           a.merchantName.toLowerCase().compareTo(b.merchantName.toLowerCase());
       return isAscending ? compareResult : -compareResult;
     });
 
     final filteredAccounts =
-        filterAccounts(accountsList, searchQuery).where((account) {
+        filterAccounts(filteredAccountsList, searchQuery).where((account) {
       if (showArchived) {
         return account.archived;
       } else {
@@ -102,14 +130,15 @@ class HomeScreen extends ConsumerWidget {
 
         final filteredProducts = account.productIds
             .map((productId) {
-              return productsList.firstWhere(
+              return filteredProductsList.firstWhere(
                 (product) => product.id == productId,
                 orElse: () => Product(
                     id: -1,
                     name: 'Unknown',
                     price: 0.0,
                     description: '',
-                    imageUrl: ''), // Provide a default Product
+                    imageUrl: '',
+                    tags: []), // Provide a default Product
               );
             })
             .where((product) => product.id != -1)
@@ -126,8 +155,18 @@ class HomeScreen extends ConsumerWidget {
           initials,
           shouldDisplayAllProducts
               ? account.productIds
-                  .map((id) => productBox.get(id))
-                  .whereType<Product>()
+                  .map((id) => filteredProductsList.firstWhere(
+                        (product) => product.id == id,
+                        orElse: () => Product(
+                          id: -1,
+                          name: 'Unknown',
+                          price: 0.0,
+                          description: '',
+                          imageUrl: '',
+                          tags: [],
+                        ),
+                      ))
+                  .where((product) => product.id != -1)
                   .toList()
               : filteredProducts,
           ref,
@@ -189,8 +228,8 @@ class HomeScreen extends ConsumerWidget {
               trailing: SizedBox(
                 width: 96, // Adjust the width as needed
                 child: Row(
-                  mainAxisSize: MainAxisSize
-                      .min, // Ensures the row does not take up more space than necessary
+                  mainAxisSize: MainAxisSize.min,
+                  // Ensures the row does not take up more space than necessary
                   mainAxisAlignment: MainAxisAlignment.spaceAround,
                   children: [
                     IconButton(
@@ -224,8 +263,8 @@ class HomeScreen extends ConsumerWidget {
               ),
               IconButton(
                 icon: const Icon(Icons.import_export),
-                onPressed: () => _importProductForm(accounts,
-                    ref.context), // Use a closure to pass the function reference
+                onPressed: () => _importProductForm(accounts, ref.context),
+                // Use a closure to pass the function reference
                 padding: const EdgeInsets.all(8.0),
               ),
               IconButton(
@@ -427,6 +466,13 @@ class HomeScreen extends ConsumerWidget {
                 const Text('Archived'),
               ],
             ),
+            const SizedBox(height: 16.0),
+            DynamicTagField(
+              initialTags: product.tags,
+              onTagsChanged: (tags) {
+                product.tags = tags;
+              },
+            ),
           ],
         ),
       ),
@@ -449,6 +495,7 @@ class HomeScreen extends ConsumerWidget {
                 archived: isArchived,
                 archiveDate: archiveDate,
                 createShortcut: createProdShortcut,
+                tags: product.tags,
               );
               // Use Riverpod to update the Product
               ref.read(productProvider.notifier).updateProduct(updatedProduct);
@@ -535,6 +582,7 @@ class HomeScreen extends ConsumerWidget {
         TextEditingController();
 
     File? pickedImageFile;
+    List<Tag> selectedTags = [];
 
     Future<void> pickImage(StateSetter setState) async {
       final pickedFile =
@@ -567,6 +615,7 @@ class HomeScreen extends ConsumerWidget {
                       pickImage,
                       setState,
                       pickedImageFile,
+                      selectedTags,
                       accounts,
                       context,
                       ref);
@@ -586,6 +635,7 @@ class HomeScreen extends ConsumerWidget {
       Future<void> pickImage(StateSetter setState),
       StateSetter setState,
       File? pickedImageFile,
+      List<Tag> selectedTags,
       Accounts accounts,
       BuildContext context,
       ref) {
@@ -631,6 +681,15 @@ class HomeScreen extends ConsumerWidget {
                       child: const Icon(Icons.add_a_photo, color: Colors.white),
                     ),
             ),
+            DynamicTagField(
+              initialTags: selectedTags,
+              onTagsChanged: (tags) {
+                setState(() {
+                  selectedTags.clear();
+                  selectedTags.addAll(tags);
+                });
+              },
+            )
           ],
         ),
       ),
@@ -643,27 +702,46 @@ class HomeScreen extends ConsumerWidget {
                 double.tryParse(productPriceController.text.trim()) ?? 0.0;
 
             if (productName.isNotEmpty) {
-              // Generate a unique ID by using the next available integer key
-              final productBox = Hive.box<Product>('products');
-              final int newProductId =
-                  productBox.isEmpty ? 0 : productBox.keys.cast<int>().last + 1;
+              try {
+                // Generate a unique ID by using the next available integer key
+                final productBox = Hive.box<Product>('products');
+                final int newProductId = productBox.isEmpty
+                    ? 0
+                    : productBox.keys.cast<int>().last + 1;
 
-              // Create the new product
-              final newProduct = Product(
-                id: newProductId,
-                name: productName,
-                price: productPrice,
-                description: productDescription,
-                imageUrl: pickedImageFile!
-                    .path, // Store the file path if an image is picked
-              );
+                print('Creating product with ID: $newProductId');
+                print('Product name: $productName');
+                print('Product price: $productPrice');
+                print('Product description: $productDescription');
+                print('Product image URL: ${pickedImageFile?.path ?? ''}');
+                print(
+                    'Product tags: ${selectedTags.map((t) => t.name).join(', ')}');
 
-              // Save the product to the Hive box
-              ref.read(productProvider.notifier).addProduct(
-                  newProduct); // Use the provider to add the product
-              accounts.productIds.add(newProductId);
-              Hive.box<Accounts>('accounts').put(accounts.key, accounts);
-              Navigator.of(context).pop();
+                // Create the new product
+                final newProduct = Product(
+                  id: newProductId,
+                  name: productName,
+                  price: productPrice,
+                  description: productDescription,
+                  imageUrl: pickedImageFile?.path ?? '',
+                  // Store the file path if an image is picked, empty string if not
+                  tags: selectedTags,
+                );
+
+                // Save the product to the Hive box
+                ref.read(productProvider.notifier).addProduct(
+                    newProduct); // Use the provider to add the product
+                accounts.productIds.add(newProductId);
+                Hive.box<Accounts>('accounts').put(accounts.key, accounts);
+
+                print('Product creation completed successfully');
+                Navigator.of(context).pop();
+              } catch (e) {
+                print('Error creating product: $e');
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(content: Text('Error creating product: $e')),
+                );
+              }
             }
             refresh();
           },
@@ -864,7 +942,7 @@ class HomeScreen extends ConsumerWidget {
               body: Center(child: Text('Authentication failed')),
             );
           } else {
-            return dialog(accounts, isDeletable, ref);
+            return dialog(accounts, isDeletable, ref, context);
           }
         },
       ),
@@ -938,11 +1016,14 @@ class HomeScreen extends ConsumerWidget {
     return "upi://pay?pa=test@upi&pn=Test Merchant"; // Simulated UPI QR Data
   }
 
-  Consumer dialog(Accounts? accounts, bool isDeletable, WidgetRef ref) {
+  Consumer dialog(Accounts? accounts, bool isDeletable, WidgetRef ref,
+      BuildContext? context) {
     // Declare controllers outside the rebuild logic to make them persistent
     final archivedNotifier = StateProvider<bool>((ref) => false);
     final merchantNameController = TextEditingController();
     final upiIdController = TextEditingController();
+    final selectedTags =
+        StateProvider<List<Tag>>((ref) => accounts?.tags ?? []);
 
     return Consumer(
       builder: (context, watchRef, child) {
@@ -1143,6 +1224,12 @@ class HomeScreen extends ConsumerWidget {
                     ],
                   ),
                 ],
+                DynamicTagField(
+                  initialTags: watchRef.watch(selectedTags),
+                  onTagsChanged: (tags) {
+                    watchRef.read(selectedTags.notifier).state = tags;
+                  },
+                ),
               ],
             ),
           ),
@@ -1170,10 +1257,11 @@ class HomeScreen extends ConsumerWidget {
               ),
             TextButton(
               onPressed: () {
+                final tags = watchRef.read(selectedTags);
                 if (accounts == null) {
-                  _addAccounts(ref);
+                  _addAccounts(ref, tags);
                 } else {
-                  _updateAccounts(accounts, ref);
+                  _updateAccounts(accounts, ref, tags);
                 }
                 Navigator.of(context).pop();
               },
@@ -1185,19 +1273,19 @@ class HomeScreen extends ConsumerWidget {
     );
   }
 
-  Future<void> _addAccounts(ref) async {
+  Future<void> _addAccounts(ref, List<Tag> tags) async {
     final formData = ref.watch(formDataProvider);
     final id = accountsBox.isEmpty ? 0 : accountsBox.values.last.id + 1;
     final accounts = Accounts(
-      id: id,
-      merchantName: formData.merchantName,
-      upiId: formData.upiId,
-      currency: formData.currency,
-      color: formData.selectedColor.value,
-      createShortcut: formData.createShortcut,
-      archived: false,
-      productIds: [],
-    );
+        id: id,
+        merchantName: formData.merchantName,
+        upiId: formData.upiId,
+        currency: formData.currency,
+        color: formData.selectedColor.value,
+        createShortcut: formData.createShortcut,
+        archived: false,
+        productIds: [],
+        tags: tags);
     await ref
         .read(accountsProvider.notifier)
         .addAccount(accounts); // Use the provider to add
@@ -1219,7 +1307,7 @@ class HomeScreen extends ConsumerWidget {
     ]);
   }
 
-  Future<void> _updateAccounts(Accounts account, ref) async {
+  Future<void> _updateAccounts(Accounts account, ref, List<Tag> tags) async {
     final formData = ref.watch(formDataProvider);
     account.merchantName = formData.merchantName;
     account.upiId = formData.upiId;
@@ -1227,6 +1315,7 @@ class HomeScreen extends ConsumerWidget {
     account.color = formData.selectedColor.value;
     account.createShortcut = formData.createShortcut;
     account.archived = formData.toggleArchived;
+    account.tags = tags;
 
     if (account.archived == false) {
       account.archiveDate = null;
@@ -1576,6 +1665,7 @@ class HomeScreen extends ConsumerWidget {
                       imageUrl: matchedProduct['imageUrl'] != null
                           ? 'https://staticapis.pragament.com/${matchedProduct['imageUrl']}'
                           : '',
+                      tags: [],
                     );
                     log(newProduct.imageUrl);
 

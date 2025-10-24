@@ -2,12 +2,8 @@ import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_template/upi/screens/home_screen.dart';
-import 'package:hive/hive.dart';
 import 'package:quick_actions/quick_actions.dart';
-
-import '../model/pay.dart';
 import '../provider/riverpod_provider.dart';
-import 'home_screen.dart';
 import 'transaction_screen.dart';
 
 class KBottom extends ConsumerWidget {
@@ -20,8 +16,10 @@ class KBottom extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final selectedPageIndex = ref.watch(selectedPageIndexProvider); // Watch page index
-    final pageController = ref.watch(pageControllerProvider); // Get the PageController
+    final selectedPageIndex =
+        ref.watch(selectedPageIndexProvider); // Watch page index
+    final pageController =
+        ref.watch(pageControllerProvider); // Get the PageController
 
     return Scaffold(
       appBar: AppBar(
@@ -78,10 +76,9 @@ class KBottom extends ConsumerWidget {
             body: Center(
               child: Text("Settings"),
             ),
-          )
+          ),
         ],
       ),
     );
   }
 }
-

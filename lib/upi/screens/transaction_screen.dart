@@ -112,8 +112,16 @@ class TransactionScreen extends ConsumerWidget {
                   final matchesSearch = searchQuery.isEmpty ||
                       order.products.keys.any((productId) {
                         final product = productBox.get(productId);
-                        return product != null &&
-                            product.name.toLowerCase().contains(searchQuery);
+                        if (product == null) return false;
+                        
+                        // Check product name, description, and tags
+                        final nameMatches = product.name.toLowerCase().contains(searchQuery);
+                        final descriptionMatches = product.description.toLowerCase().contains(searchQuery);
+                        final tagMatches = product.tags.any((tag) => 
+                          tag.name.toLowerCase().contains(searchQuery)
+                        );
+                        
+                        return nameMatches || descriptionMatches || tagMatches;
                       });
 
                   final matchesDate = dateRange == null ||

@@ -1,9 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../tag/tags_strip.dart';
 import '../../provider/notifiers.dart';
 import '../../provider/riverpod_provider.dart';
-
 
 AppBar customAppBar(WidgetRef ref, TextEditingController searchController) {
   final isAscending = ref.watch(sortOrderProvider);
