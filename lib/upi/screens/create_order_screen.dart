@@ -10,6 +10,8 @@ import 'package:hive/hive.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:qr_flutter/qr_flutter.dart';
 
+import '../../tag/tag_field.dart';
+import '../../tag/tag_model.dart';
 import '../model/pay.dart';
 import '../provider/order_provider.dart';
 import '../provider/product_provider.dart';
@@ -190,6 +192,7 @@ class _CreateOrderScreenState extends ConsumerState<CreateOrderScreen> {
         TextEditingController();
 
     File? pickedImageFile;
+    List<Tag> selectedTags = [];
 
     Future<void> pickImage(StateSetter setState) async {
       final pickedFile =
@@ -246,6 +249,15 @@ class _CreateOrderScreenState extends ConsumerState<CreateOrderScreen> {
                             child: const Icon(Icons.add_a_photo,
                                 color: Colors.white)),
                   ),
+                  const SizedBox(height: 8.0),
+                  DynamicTagField(
+                    initialTags: selectedTags,
+                    onTagsChanged: (tags) {
+                      setState(() {
+                        selectedTags = tags;
+                      });
+                    },
+                  ),
                 ],
               ),
             ),
@@ -260,31 +272,47 @@ class _CreateOrderScreenState extends ConsumerState<CreateOrderScreen> {
                             0.0;
 
                     if (productName.isNotEmpty) {
-                      // Generate a unique ID by using the next available integer key
-                      final productBox = Hive.box<Product>('products');
-                      final int newProductId = productBox.isEmpty
-                          ? 0
-                          : productBox.keys.cast<int>().last + 1;
+                      try {
+                        // Generate a unique ID by using the next available integer key
+                        final productBox = Hive.box<Product>('products');
+                        final int newProductId = productBox.isEmpty
+                            ? 0
+                            : productBox.keys.cast<int>().last + 1;
 
-                      // Create the new product
-                      final newProduct = Product(
-                        id: newProductId,
-                        name: productName,
-                        price: productPrice,
-                        description: productDescription,
-                        imageUrl: pickedImageFile!.path,
-                      );
+                        print('Creating product with ID: $newProductId');
+                        print('Product name: $productName');
+                        print('Product price: $productPrice');
+                        print('Product description: $productDescription');
+                        print('Product image URL: ${pickedImageFile?.path ?? ''}');
+                        print('Product tags: ${selectedTags.map((t) => t.name).join(', ')}');
 
-                      // Save the product to the Hive box and update provider
-                      ref.read(productProvider.notifier).addProduct(newProduct);
+                        // Create the new product
+                        final newProduct = Product(
+                          id: newProductId,
+                          name: productName,
+                          price: productPrice,
+                          description: productDescription,
+                          imageUrl: pickedImageFile?.path ?? '', // Store the file path if an image is picked, empty string if not
+                          tags: selectedTags,
+                        );
 
-                      // Update the accounts with the new product ID
-                      widget.account.productIds.add(newProductId);
-                      Hive.box<Accounts>('accounts')
-                          .put(widget.account.key, widget.account);
+                        // Save the product to the Hive box and update provider
+                        ref.read(productProvider.notifier).addProduct(newProduct);
 
-                      Navigator.of(context).pop();
-                      widget.onOrderCreated();
+                        // Update the accounts with the new product ID
+                        widget.account.productIds.add(newProductId);
+                        Hive.box<Accounts>('accounts')
+                            .put(widget.account.key, widget.account);
+
+                        print('Product creation completed successfully');
+                        Navigator.of(context).pop();
+                        widget.onOrderCreated();
+                      } catch (e) {
+                        print('Error creating product: $e');
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(content: Text('Error creating product: $e')),
+                        );
+                      }
                     }
                   },
                   child: const Text('Save')),
@@ -342,9 +370,13 @@ class _CreateOrderScreenState extends ConsumerState<CreateOrderScreen> {
                         // Update the filtered products based on the search input
                         dialogSetState(() {
                           filteredProducts = _products!.where((product) {
-                            return product.name
-                                .toLowerCase()
-                                .contains(value.toLowerCase());
+                            final searchTerm = value.toLowerCase();
+                            final nameMatches = product.name.toLowerCase().contains(searchTerm);
+                            final descriptionMatches = product.description.toLowerCase().contains(searchTerm);
+                            final tagMatches = product.tags.any((tag) => 
+                              tag.name.toLowerCase().contains(searchTerm)
+                            );
+                            return nameMatches || descriptionMatches || tagMatches;
                           }).toList();
                         });
                       },

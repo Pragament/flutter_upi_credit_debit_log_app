@@ -7,15 +7,25 @@ class ProductNotifier extends StateNotifier<List<Product>> {
   ProductNotifier() : super([]);
 
   void addProduct(Product product) {
-    state = [...state, product];
-    final productBox = Hive.box<Product>('products');
-    productBox.put(product.id, product);
+    try {
+      final productBox = Hive.box<Product>('products');
+      productBox.put(product.id, product);
+      state = [...state, product];
+      print('Product saved successfully: ${product.name} with ID: ${product.id}');
+    } catch (e) {
+      print('Error saving product: $e');
+    }
   }
 
   void updateProduct(Product updatedProduct) {
-    state = state.map((product) => product.id == updatedProduct.id ? updatedProduct : product).toList();
-    final productBox = Hive.box<Product>('products');
-    productBox.put(updatedProduct.id, updatedProduct);
+    try {
+      final productBox = Hive.box<Product>('products');
+      productBox.put(updatedProduct.id, updatedProduct);
+      state = state.map((product) => product.id == updatedProduct.id ? updatedProduct : product).toList();
+      print('Product updated successfully: ${updatedProduct.name} with ID: ${updatedProduct.id}');
+    } catch (e) {
+      print('Error updating product: $e');
+    }
   }
 
   Future<void> fetchProducts(List<int> productIds) async {

@@ -9,12 +9,12 @@ import '../model/pay.dart';
 import '../screens/create_order_screen.dart';
 import 'notifiers.dart';
 
-
 /// State provider for managing the selected page index
 final selectedPageIndexProvider = StateProvider<int>((ref) => 0);
 
 /// Provider for the PageController
-final pageControllerProvider = StateNotifierProvider<PageControllerNotifier, PageController>((ref) {
+final pageControllerProvider =
+    StateNotifierProvider<PageControllerNotifier, PageController>((ref) {
   return PageControllerNotifier();
 });
 
@@ -28,9 +28,8 @@ class PageControllerNotifier extends StateNotifier<PageController> {
   }
 }
 
-
 final navigatorKeyProvider = Provider<GlobalKey<NavigatorState>>(
-      (ref) => GlobalKey<NavigatorState>(),
+  (ref) => GlobalKey<NavigatorState>(),
 );
 
 final hiveInitializationProvider = FutureProvider<void>((ref) async {
@@ -82,7 +81,7 @@ final quickActionsProvider = Provider<QuickActions>((ref) {
 
         final accountsBox = Hive.box<Accounts>('accounts');
         final account = accountsBox.values.firstWhere(
-              (s) => s.productIds.contains(productId),
+          (s) => s.productIds.contains(productId),
           orElse: () => Accounts(
             id: -1,
             merchantName: '',
@@ -92,6 +91,7 @@ final quickActionsProvider = Provider<QuickActions>((ref) {
             archived: false,
             productIds: [],
             currency: '',
+            tags: [],
           ),
         );
 
@@ -118,21 +118,19 @@ class SearchQueryNotifier extends StateNotifier<String> {
     state = query; // Update the search query
   }
 }
+
 final searchQueryProviders = StateNotifierProvider<SearchQueryNotifier, String>(
-      (ref) => SearchQueryNotifier(),
+  (ref) => SearchQueryNotifier(),
 );
 
 // StateNotifier for managing the sorting order
 final sortOrderProvider = StateNotifierProvider<SortOrderNotifier, bool>(
-      (ref) => SortOrderNotifier(),
+  (ref) => SortOrderNotifier(),
 );
 
 // StateNotifier for managing the archived accounts filter
 final showArchivedProvider = StateNotifierProvider<ShowArchivedNotifier, bool>(
-      (ref) => ShowArchivedNotifier(),
+  (ref) => ShowArchivedNotifier(),
 );
 
-
-void _refresh(ref) {
-
-}
+void _refresh(ref) {}
